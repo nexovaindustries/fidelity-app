@@ -128,6 +128,9 @@ export default function CustomerRegister() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [tarjetaId, setTarjetaId] = useState(null);
+  const [qrValue, setQrValue] = useState('');
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState('');
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre: '', celular: '' });
 
@@ -166,7 +169,6 @@ export default function CustomerRegister() {
       return;
     }
 
-    // Validate phone (basic)
     const cleanPhone = form.celular.replace(/\D/g, '');
     if (cleanPhone.length < 7) {
       setError('Ingresa un número de celular válido.');
@@ -176,7 +178,6 @@ export default function CustomerRegister() {
     setSubmitting(true);
 
     try {
-      // 1. Upsert client by phone number
       const { data: existingClients } = await supabase
         .from('clientes')
         .select('id')
@@ -202,30 +203,29 @@ export default function CustomerRegister() {
         clienteId = newClient.id;
       }
 
-      // 2. Check if they already have a card for this comercio
       const { data: existingCards } = await supabase
         .from('tarjetas_activas')
-        .select('id')
+        .select('id, qr_value')
         .eq('comercio_id', comercioId)
         .eq('cliente_id', clienteId)
         .limit(1);
 
       if (existingCards && existingCards.length > 0) {
         setTarjetaId(existingCards[0].id);
+        setQrValue(existingCards[0].qr_value);
         setSuccess(true);
         setSubmitting(false);
         return;
       }
 
-      // 3. Create the loyalty card
-      const qrValue = `FID-${comercioId.slice(0,8)}-${clienteId.slice(0,8)}-${Date.now().toString(36)}`;
+      const newQrValue = `FID-${comercioId.slice(0,8)}-${clienteId.slice(0,8)}-${Date.now().toString(36)}`;
       
       const { data: tarjeta, error: tarjetaErr } = await supabase
         .from('tarjetas_activas')
         .insert({
           comercio_id: comercioId,
           cliente_id: clienteId,
-          qr_value: qrValue,
+          qr_value: newQrValue,
           puntos_actuales: 0,
           total_sellos: 0,
           nivel_actual: 'Bronce',
@@ -236,6 +236,7 @@ export default function CustomerRegister() {
       if (tarjetaErr) throw tarjetaErr;
 
       setTarjetaId(tarjeta.id);
+      setQrValue(newQrValue);
       setSuccess(true);
 
     } catch (err) {
@@ -243,6 +244,43 @@ export default function CustomerRegister() {
       setError('Hubo un error al registrarte. Intenta de nuevo.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // ──── GOOGLE WALLET HANDLER ────
+  const handleGoogleWallet = async () => {
+    setWalletLoading(true);
+    setWalletError('');
+    try {
+      const res = await fetch('/api/wallet/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tarjetaId,
+          comercioNombre: comercio.nombre,
+          clienteNombre: form.nombre,
+          qrValue,
+          tipoFidelizacion: comercio.tipo_fidelizacion,
+          puntos: 0,
+          sellos: 0,
+          nivel: 'Bronce',
+          colorFondo: comercio.color_fondo,
+          logoUrl: comercio.logo_url?.startsWith('http') ? comercio.logo_url : null,
+        }),
+      });
+
+      const data = await res.json();
+      
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setWalletError(data.error || 'No se pudo generar la tarjeta.');
+      }
+    } catch (err) {
+      console.error('Google Wallet error:', err);
+      setWalletError('Error al conectar con Google Wallet.');
+    } finally {
+      setWalletLoading(false);
     }
   };
 
@@ -305,14 +343,9 @@ export default function CustomerRegister() {
           {/* Wallet Buttons */}
           <div style={s.walletBtns}>
             <button
-              style={{ 
-                ...s.walletBtn, 
-                background: '#000', 
-                color: '#fff',
-              }}
+              style={{ ...s.walletBtn, background: '#000', color: '#fff' }}
               onClick={() => {
-                // Apple Wallet — would redirect to .pkpass download
-                alert('🍎 Apple Wallet estará disponible próximamente. Tu tarjeta ya está registrada y activa.');
+                alert('🍎 Apple Wallet requiere configuración de certificados. Contacta al administrador.');
               }}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
@@ -324,16 +357,27 @@ export default function CustomerRegister() {
                 background: '#fff', 
                 color: '#1a1a1a',
                 boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                opacity: walletLoading ? 0.7 : 1,
               }}
-              onClick={() => {
-                // Google Wallet — would redirect to save URL
-                alert('📱 Google Wallet estará disponible próximamente. Tu tarjeta ya está registrada y activa.');
-              }}
+              onClick={handleGoogleWallet}
+              disabled={walletLoading}
             >
-              <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-              Añadir a Google Wallet
+              {walletLoading ? (
+                <>⏳ Generando...</>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                  Añadir a Google Wallet
+                </>
+              )}
             </button>
           </div>
+
+          {walletError && (
+            <div style={{ padding: '0.5rem 2rem 1rem', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.8rem', color: '#ef4444' }}>{walletError}</p>
+            </div>
+          )}
 
           <div style={{ padding: '0 2rem 1.5rem', textAlign: 'center' }}>
             <p style={{ fontSize: '0.8rem', opacity: 0.5, lineHeight: 1.5 }}>
