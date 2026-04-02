@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette } from 'lucide-react';
+import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette, QrCode, Link, Smartphone, Copy, Check, Download } from 'lucide-react';
 
 const TEMPLATE_COLORS = {
   default: null,
@@ -562,8 +562,144 @@ export default function Settings() {
               </span>
             </div>
           </div>
+
+          {/* ===== QR CODE FOR CUSTOMERS ===== */}
+          <QRSection comercioId={comercioId} comercioNombre={formData.nombre} accentColor={colors.color_acento} />
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+function QRSection({ comercioId, comercioNombre, accentColor }) {
+  const [copied, setCopied] = useState(false);
+  const canvasRef = useRef(null);
+  
+  const registrationUrl = `${window.location.origin}/registro/${comercioId}`;
+
+  useEffect(() => {
+    if (!comercioId || !canvasRef.current) return;
+    import('qrcode').then((QRCode) => {
+      QRCode.toCanvas(canvasRef.current, registrationUrl, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#1a1a2e', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+    });
+  }, [comercioId, registrationUrl]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(registrationUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = registrationUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!canvasRef.current) return;
+    const link = document.createElement('a');
+    link.download = `qr-${comercioNombre || 'fidelidad'}.png`;
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+  };
+
+  return (
+    <div className="glass-panel" style={{ marginTop: '1rem' }}>
+      <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <QrCode size={18} style={{ color: 'var(--accent-primary)' }} />
+        QR para Clientes
+      </h3>
+      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+        Imprime este QR o comparte el enlace. Los clientes lo escanean para registrarse y recibir su tarjeta de fidelidad.
+      </p>
+
+      {/* QR Code Canvas */}
+      <div style={{ 
+        background: '#fff', 
+        borderRadius: '16px', 
+        padding: '1.5rem', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+      }}>
+        <canvas 
+          ref={canvasRef} 
+          style={{ width: '200px', height: '200px' }}
+        />
+        <p style={{ 
+          margin: '0.75rem 0 0', 
+          fontSize: '0.85rem', 
+          fontWeight: 700, 
+          color: '#1a1a1a',
+          textAlign: 'center',
+        }}>
+          {comercioNombre || 'Tu Negocio'}
+        </p>
+        <p style={{ margin: '0.25rem 0 0', fontSize: '0.7rem', color: '#888', textAlign: 'center' }}>
+          Escanea para unirte al programa de fidelidad
+        </p>
+      </div>
+
+      {/* Share URL */}
+      <div style={{ marginTop: '1rem' }}>
+        <label className="input-label" style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Link size={12} /> Enlace de registro
+        </label>
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.5rem',
+          marginTop: '0.3rem',
+        }}>
+          <input
+            type="text"
+            readOnly
+            value={registrationUrl}
+            className="input-field"
+            style={{ fontSize: '0.75rem', flex: 1 }}
+            onClick={(e) => e.target.select()}
+          />
+          <button
+            type="button"
+            className={`btn ${copied ? 'btn-success' : 'btn-accent'} btn-sm`}
+            onClick={handleCopy}
+            style={{ whiteSpace: 'nowrap', minWidth: '80px' }}
+          >
+            {copied ? <><Check size={14} /> Copiado</> : <><Copy size={14} /> Copiar</>}
+          </button>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <button
+          type="button"
+          className="btn btn-accent btn-sm"
+          onClick={handleDownload}
+          style={{ flex: 1 }}
+        >
+          <Download size={14} /> Descargar QR
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => window.open(registrationUrl, '_blank')}
+          style={{ flex: 1 }}
+        >
+          <Smartphone size={14} /> Probar
+        </button>
       </div>
     </div>
   );

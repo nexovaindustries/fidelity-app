@@ -11,6 +11,7 @@ import Scanner from './pages/Scanner';
 import Settings from './pages/Settings';
 import Customers from './pages/Customers';
 import Rewards from './pages/Rewards';
+import CustomerRegister from './pages/CustomerRegister';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/registro/:comercioId" element={<CustomerRegister />} />
 
           {/* Protected B2B Routes */}
           <Route element={<ProtectedRoute />}>
