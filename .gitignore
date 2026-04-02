@@ -1,0 +1,10 @@
+node_modules/
+.env
+frontend/.env
+frontend/node_modules/
+frontend/dist/
+certs/apple/*.pem
+certs/apple/*.p12
+certs/google/*.json
+certs/google/*.pem
+.DS_Store
