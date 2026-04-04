@@ -80,9 +80,7 @@ export default function Scanner() {
     setFeedback({ state: 'idle', message: '', data: null });
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      
-      const response = await fetch(`${API_URL}/api/scan`, {
+      const response = await fetch(`/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

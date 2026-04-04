@@ -2,6 +2,14 @@ import JSZip from 'jszip';
 import forge from 'node-forge';
 import { Buffer } from 'node:buffer';
 
+function hexToRgb(hex) {
+  if (!hex || !hex.startsWith('#')) return null;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function fixPem(pem) {
   if (!pem) return pem;
   return pem.replace(/\\n/g, '\n').replace(/\r/g, '').trim();
@@ -127,12 +135,13 @@ export async function onRequest(context) {
     const passJson = {
       formatVersion: 1,
       passTypeIdentifier: passTypeId,
+      serialNumber: tarjetaId || crypto.randomUUID(),
       teamIdentifier: teamId,
       organizationName: comercioNombre || 'Fidelity',
       description: `Pase de ${comercioNombre}`,
-      backgroundColor: colorFondo || 'rgb(26, 26, 46)',
-      foregroundColor: colorTexto || 'rgb(255, 255, 255)',
-      labelColor: colorTexto || 'rgb(255, 255, 255)',
+      backgroundColor: hexToRgb(colorFondo) || 'rgb(26, 26, 46)',
+      foregroundColor: hexToRgb(colorTexto) || 'rgb(255, 255, 255)',
+      labelColor: hexToRgb(colorTexto) || 'rgb(255, 255, 255)',
       logoText: comercioNombre,
       sharingProhibited: true,
       storeCard: {
