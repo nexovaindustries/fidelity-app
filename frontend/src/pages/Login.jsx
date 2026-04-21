@@ -12,8 +12,6 @@ const resolveEmail = (input) => {
 
 export default function Login() {
   const { signIn, user } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,19 +19,20 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    // Leer directamente antes de cualquier cambio de estado
+    const formUsername = e.target.username?.value || '';
+    const formPassword = e.target.password?.value || '';
+
     setLoading(true);
     setError('');
-
-    // Leer directamente del DOM para evitar problemas con el autocompletado de Google
-    const formUsername = e.target.username?.value || username;
-    const formPassword = e.target.password?.value || password;
 
     const email = resolveEmail(formUsername.trim());
     const { error: signInError } = await signIn(email, formPassword);
 
     if (signInError) {
       console.error(signInError);
-      setError('Usuario o contraseña incorrectos.');
+      setError(`Error: Usuario o contraseña incorrectos. (Intentando acceder como: ${email})`);
     }
 
     setLoading(false);
@@ -63,8 +62,7 @@ export default function Login() {
                 type="text"
                 className="input-field"
                 placeholder="Ej. Arly.helados"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                defaultValue=""
                 required
                 autoComplete="username"
                 style={{ paddingLeft: '2.75rem' }}
@@ -82,8 +80,7 @@ export default function Login() {
                 type="password"
                 className="input-field"
                 placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                defaultValue=""
                 required
                 autoComplete="current-password"
                 style={{ paddingLeft: '2.75rem' }}
