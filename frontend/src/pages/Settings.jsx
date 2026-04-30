@@ -1,13 +1,22 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette, QrCode, Link, Smartphone, Copy, Check, Download } from 'lucide-react';
+import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette, QrCode, Link, Smartphone, Copy, Check, Download, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 const TEMPLATE_COLORS = {
-  default: null,
-  cafeteria: { color_fondo: '#D2B48C', color_texto: '#3E2723', color_acento: '#8D6E63' },
-  restaurante: { color_fondo: '#800000', color_texto: '#FFD700', color_acento: '#B71C1C' },
-  peluqueria: { color_fondo: '#1a1a1a', color_texto: '#FFD700', color_acento: '#C9B037' },
+  default:     null,
+  cafeteria:   { color_fondo: '#2C1A0E', color_texto: '#F5DEB3', color_acento: '#C8943A' },
+  restaurante: { color_fondo: '#1A0505', color_texto: '#F5E6D3', color_acento: '#C0392B' },
+  panaderia:   { color_fondo: '#2D1B10', color_texto: '#FEF3C7', color_acento: '#D97706' },
+  bar:         { color_fondo: '#0D0B18', color_texto: '#E8D5A3', color_acento: '#F59E0B' },
+  peluqueria:  { color_fondo: '#111111', color_texto: '#F5F5F5', color_acento: '#C9B037' },
+  spa:         { color_fondo: '#12302A', color_texto: '#E8F5F0', color_acento: '#4CAF9A' },
+  farmacia:    { color_fondo: '#0A2318', color_texto: '#D1FAE5', color_acento: '#22C55E' },
+  boutique:    { color_fondo: '#1A0F2E', color_texto: '#EDE0FF', color_acento: '#A855F7' },
+  gimnasio:    { color_fondo: '#0A0A0A', color_texto: '#F5F5F5', color_acento: '#EF4444' },
+  libreria:    { color_fondo: '#1E1B4B', color_texto: '#EDE9FE', color_acento: '#818CF8' },
+  hotel:       { color_fondo: '#18140F', color_texto: '#F5ECD7', color_acento: '#BFA173' },
+  tecnologia:  { color_fondo: '#060D1F', color_texto: '#BFDBFE', color_acento: '#3B82F6' },
 };
 
 const COLOR_PRESETS = [
@@ -26,6 +35,9 @@ export default function Settings() {
   
   const [formData, setFormData] = useState({
     nombre: '',
+    slogan: '',
+    telefono: '',
+    sitio_web: '',
     plantilla_diseno: 'default',
     tipo_fidelizacion: 'puntos',
     color_fondo: '#1a1a2e',
@@ -37,6 +49,11 @@ export default function Settings() {
     hero_image_url: '',
     logo_size: 50,
     logo_shape: 'circle',
+    config_fidelizacion: {
+      meta_sellos: 10,
+      puntos_para_recompensa: 100,
+      descripcion_recompensa: '',
+    },
   });
   
   const [loading, setLoading] = useState(true);
@@ -60,6 +77,9 @@ export default function Settings() {
       if (!error && data) {
         setFormData({
           nombre: data.nombre || '',
+          slogan: data.slogan || '',
+          telefono: data.telefono || '',
+          sitio_web: data.sitio_web || '',
           plantilla_diseno: data.plantilla_diseno || 'default',
           tipo_fidelizacion: data.tipo_fidelizacion || 'puntos',
           color_fondo: data.color_fondo || '#1a1a2e',
@@ -71,6 +91,11 @@ export default function Settings() {
           hero_image_url: data.hero_image_url || '',
           logo_size: data.logo_size || 50,
           logo_shape: data.logo_shape || 'circle',
+          config_fidelizacion: {
+            meta_sellos: data.config_fidelizacion?.meta_sellos || 10,
+            puntos_para_recompensa: data.config_fidelizacion?.puntos_para_recompensa || 100,
+            descripcion_recompensa: data.config_fidelizacion?.descripcion_recompensa || '',
+          },
         });
       }
       setLoading(false);
@@ -124,6 +149,13 @@ export default function Settings() {
     } else {
       setFormData(prev => ({ ...prev, plantilla_diseno: template }));
     }
+  };
+
+  const handleConfigChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      config_fidelizacion: { ...prev.config_fidelizacion, [field]: value },
+    }));
   };
 
   const applyPreset = (preset) => {
@@ -213,6 +245,26 @@ export default function Settings() {
               <input type="number" id="dias_expiracion" name="dias_expiracion" className="input-field" value={formData.dias_expiracion} onChange={handleChange} min="1" required />
             </div>
           </div>
+          <div className="input-group">
+            <label className="input-label" htmlFor="slogan">Slogan o Tagline <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(opcional)</span></label>
+            <input type="text" id="slogan" name="slogan" className="input-field" value={formData.slogan} onChange={handleChange} placeholder="Ej. El mejor café de la ciudad" maxLength={60} />
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Aparece en el frente y reverso de la tarjeta Wallet.</p>
+          </div>
+
+          {/* ===== SECTION: Contact ===== */}
+          <div className="section-divider" />
+          <div className="section-title">Datos de Contacto</div>
+          <div className="grid-cols-2">
+            <div className="input-group">
+              <label className="input-label" htmlFor="telefono">Teléfono</label>
+              <input type="tel" id="telefono" name="telefono" className="input-field" value={formData.telefono} onChange={handleChange} placeholder="+51 999 123 456" />
+            </div>
+            <div className="input-group">
+              <label className="input-label" htmlFor="sitio_web">Sitio Web</label>
+              <input type="url" id="sitio_web" name="sitio_web" className="input-field" value={formData.sitio_web} onChange={handleChange} placeholder="https://tucomercio.com" />
+            </div>
+          </div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '-0.25rem' }}>Aparecen en el reverso de la tarjeta Wallet como links interactivos (llamar / abrir web).</p>
 
           {/* ===== SECTION: Mechanics ===== */}
           <div className="section-divider" />
@@ -229,12 +281,78 @@ export default function Settings() {
             <div className="input-group">
               <label className="input-label" htmlFor="plantilla_diseno">Plantilla Temática</label>
               <select id="plantilla_diseno" name="plantilla_diseno" className="input-field" value={formData.plantilla_diseno} onChange={handleTemplateChange}>
-                <option value="default">Diseño Personalizado</option>
-                <option value="cafeteria">☕ Cafetería Clásica</option>
-                <option value="restaurante">🍽️ Restaurante Moderno</option>
-                <option value="peluqueria">✂️ Peluquería Elegante</option>
+                <option value="default">✏️ Diseño Personalizado</option>
+                <optgroup label="Gastronomía">
+                  <option value="cafeteria">☕ Cafetería / Café Bar</option>
+                  <option value="restaurante">🍽️ Restaurante</option>
+                  <option value="panaderia">🥐 Panadería / Pastelería</option>
+                  <option value="bar">🍹 Bar / Pub / Cocteles</option>
+                </optgroup>
+                <optgroup label="Salud &amp; Belleza">
+                  <option value="peluqueria">✂️ Peluquería / Barbería</option>
+                  <option value="spa">🌿 Spa / Centro de Bienestar</option>
+                  <option value="farmacia">💊 Farmacia / Botica</option>
+                </optgroup>
+                <optgroup label="Estilo de Vida">
+                  <option value="boutique">👗 Boutique / Moda</option>
+                  <option value="gimnasio">💪 Gimnasio / Fitness</option>
+                  <option value="libreria">📚 Librería / Papelería</option>
+                </optgroup>
+                <optgroup label="Servicios">
+                  <option value="hotel">🏨 Hotel / Hospedaje</option>
+                  <option value="tecnologia">💻 Tecnología / Electrónica</option>
+                </optgroup>
               </select>
             </div>
+          </div>
+
+          {/* ===== SECTION: Loyalty Config ===== */}
+          <div className="section-divider" />
+          <div className="section-title">Configuración de Recompensas</div>
+
+          {formData.tipo_fidelizacion === 'sellos' && (
+            <div className="input-group">
+              <label className="input-label" htmlFor="meta_sellos">Meta de Sellos</label>
+              <input
+                type="number" id="meta_sellos" className="input-field"
+                min="2" max="50"
+                value={formData.config_fidelizacion.meta_sellos}
+                onChange={(e) => handleConfigChange('meta_sellos', parseInt(e.target.value) || 10)}
+              />
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Número de sellos que el cliente debe acumular para ganar su recompensa.</p>
+            </div>
+          )}
+
+          {formData.tipo_fidelizacion === 'puntos' && (
+            <div className="input-group">
+              <label className="input-label" htmlFor="puntos_para_recompensa">Puntos para Recompensa</label>
+              <input
+                type="number" id="puntos_para_recompensa" className="input-field"
+                min="1"
+                value={formData.config_fidelizacion.puntos_para_recompensa}
+                onChange={(e) => handleConfigChange('puntos_para_recompensa', parseInt(e.target.value) || 100)}
+              />
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Puntos necesarios para canjear una recompensa (se muestra en la tarjeta).</p>
+            </div>
+          )}
+
+          {formData.tipo_fidelizacion === 'niveles' && (
+            <div style={{ padding: '0.75rem 1rem', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <strong>Umbrales automáticos:</strong><br />
+              🥉 Bronce: 0 – 499 puntos &nbsp;|&nbsp; 🥈 Plata: 500 – 999 pts &nbsp;|&nbsp; 🥇 Oro: 1000+ puntos
+            </div>
+          )}
+
+          <div className="input-group" style={{ marginTop: '0.75rem' }}>
+            <label className="input-label" htmlFor="descripcion_recompensa">Descripción de la Recompensa</label>
+            <textarea
+              id="descripcion_recompensa" className="input-field"
+              value={formData.config_fidelizacion.descripcion_recompensa}
+              onChange={(e) => handleConfigChange('descripcion_recompensa', e.target.value)}
+              placeholder="Ej. Café gratis al completar 10 sellos | 10% de descuento al llegar a 100 puntos..."
+              style={{ resize: 'vertical', minHeight: '64px' }}
+            />
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Aparece en el reverso de la tarjeta Wallet cuando el cliente toca el ícono de info.</p>
           </div>
 
           {/* ===== SECTION: Colors ===== */}
@@ -440,8 +558,8 @@ export default function Settings() {
         </form>
 
         {/* ===== LIVE PREVIEW PANE ===== */}
-        <div>
-          <div className="glass-panel" style={{ position: 'sticky', top: '2rem' }}>
+        <div style={{ position: 'sticky', top: '2rem', alignSelf: 'start', maxHeight: 'calc(100vh - 4rem)', overflowY: 'auto' }}>
+          <div className="glass-panel">
             <h3 style={{ fontSize: '1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ color: 'var(--accent-primary)' }}>✦</span>
               Vista Previa en Vivo
@@ -454,25 +572,25 @@ export default function Settings() {
               color: colors.color_texto,
             }}>
               
-              {/* Header: Logo + Name */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: formData.hero_image_url ? '1rem' : '1.5rem', position: 'relative', zIndex: 1 }}>
+              {/* Header: Logo + Name + Slogan */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: formData.hero_image_url ? '0.75rem' : '1.25rem', position: 'relative', zIndex: 1 }}>
                 {formData.logo_url ? (
-                  <img 
-                    src={formData.logo_url} 
-                    alt="Logo" 
-                    style={{ 
-                      width: `${formData.logo_size}px`, 
-                      height: `${formData.logo_size}px`, 
+                  <img
+                    src={formData.logo_url}
+                    alt="Logo"
+                    style={{
+                      width: `${formData.logo_size}px`,
+                      height: `${formData.logo_size}px`,
                       borderRadius: getLogoRadius(),
                       objectFit: 'contain',
                       backgroundColor: 'rgba(255,255,255,0.1)',
                       flexShrink: 0,
-                    }} 
+                    }}
                   />
                 ) : (
-                  <div style={{ 
-                    width: `${formData.logo_size}px`, 
-                    height: `${formData.logo_size}px`, 
+                  <div style={{
+                    width: `${formData.logo_size}px`,
+                    height: `${formData.logo_size}px`,
                     borderRadius: getLogoRadius(),
                     border: `2px dashed ${colors.color_texto}40`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -480,17 +598,17 @@ export default function Settings() {
                     flexShrink: 0,
                   }}>Logo</div>
                 )}
-                <span style={{ fontWeight: 700, fontSize: '1.1rem', textAlign: 'right', flex: 1, marginLeft: '1rem', letterSpacing: '-0.01em' }}>
-                  {formData.nombre || 'Tu Marca'}
-                </span>
-              </div>
-
-              {/* Custom Text */}
-              {formData.texto_personalizado && (
-                <div style={{ marginBottom: '1rem', fontSize: '0.8rem', opacity: 0.85, whiteSpace: 'pre-wrap', lineHeight: '1.5', position: 'relative', zIndex: 1 }}>
-                  {formData.texto_personalizado}
+                <div style={{ flex: 1, marginLeft: '1rem', textAlign: 'right' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.01em' }}>
+                    {formData.nombre || 'Tu Marca'}
+                  </div>
+                  {formData.slogan && (
+                    <div style={{ fontSize: '0.68rem', opacity: 0.65, marginTop: '2px', fontStyle: 'italic' }}>
+                      {formData.slogan}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* Banner Image */}
               {formData.hero_image_url && (
@@ -524,29 +642,36 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* Footer: Balance + Barcode */}
+              {/* Footer: Balance + Next Reward + Barcode */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: `1px dashed ${colors.color_texto}30`, paddingTop: '1.25rem', marginTop: '1rem', position: 'relative', zIndex: 1 }}>
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: colors.color_acento, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                    {formData.tipo_fidelizacion === 'sellos' ? 'SELLOS' : 'SALDO ACTUAL'}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 700, color: colors.color_acento, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '2px' }}>
+                    {formData.tipo_fidelizacion === 'sellos' ? 'SELLOS' : formData.tipo_fidelizacion === 'niveles' ? 'NIVEL' : 'PUNTOS'}
                   </div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em' }}>
-                    {formData.tipo_fidelizacion === 'sellos' ? '3/10' : '0'}
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em' }}>
+                    {formData.tipo_fidelizacion === 'sellos'
+                      ? `0/${formData.config_fidelizacion.meta_sellos}`
+                      : formData.tipo_fidelizacion === 'niveles' ? 'Bronce' : '0'}
                   </div>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>
-                    {formData.tipo_fidelizacion === 'puntos' ? 'puntos' : formData.tipo_fidelizacion === 'niveles' ? 'puntos • Bronce' : ''}
+                  <div style={{ fontSize: '0.62rem', opacity: 0.55, marginTop: '3px' }}>
+                    {formData.tipo_fidelizacion === 'puntos'
+                      ? `Próx. recompensa en ${formData.config_fidelizacion.puntos_para_recompensa} pts`
+                      : formData.tipo_fidelizacion === 'niveles'
+                      ? 'Plata en 500 pts'
+                      : `${formData.config_fidelizacion.meta_sellos} sellos = premio`}
                   </div>
                 </div>
                 {/* Mini QR placeholder */}
-                <div style={{ 
-                  width: '56px', height: '56px', 
+                <div style={{
+                  width: '52px', height: '52px',
                   backgroundColor: colors.color_texto,
-                  borderRadius: '6px', 
+                  borderRadius: '6px',
                   display: 'grid',
                   gridTemplateColumns: 'repeat(5, 1fr)',
                   gap: '2px',
                   padding: '4px',
-                  opacity: 0.8
+                  opacity: 0.85,
+                  flexShrink: 0,
                 }}>
                   {Array.from({ length: 25 }).map((_, i) => (
                     <div key={i} style={{ backgroundColor: [0,1,2,5,6,10,12,14,18,19,20,23,24].includes(i) ? colors.color_fondo : 'transparent', borderRadius: '1px' }} />
@@ -568,6 +693,121 @@ export default function Settings() {
         </div>
 
       </div>
+
+      {/* ===== CHANGE PASSWORD SECTION ===== */}
+      <ChangePasswordSection />
+    </div>
+  );
+}
+
+function ChangePasswordSection() {
+  const [form, setForm] = useState({ current: '', newPass: '', confirm: '' });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ text: '', type: '' });
+  const [show, setShow] = useState({ current: false, newPass: false, confirm: false });
+
+  const toggleShow = (field) => setShow(prev => ({ ...prev, [field]: !prev[field] }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage({ text: '', type: '' });
+
+    if (form.newPass !== form.confirm) {
+      setMessage({ text: 'Las contraseñas nuevas no coinciden.', type: 'error' });
+      return;
+    }
+    if (form.newPass.length < 6) {
+      setMessage({ text: 'La nueva contraseña debe tener al menos 6 caracteres.', type: 'error' });
+      return;
+    }
+    if (form.current === form.newPass) {
+      setMessage({ text: 'La nueva contraseña debe ser diferente a la actual.', type: 'error' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Verificar contraseña actual re-autenticando
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email;
+      if (!email) throw new Error('Sesión inválida');
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: form.current });
+      if (signInError) {
+        setMessage({ text: 'La contraseña actual es incorrecta.', type: 'error' });
+        setLoading(false);
+        return;
+      }
+
+      // Actualizar contraseña
+      const { error: updateError } = await supabase.auth.updateUser({ password: form.newPass });
+      if (updateError) throw updateError;
+
+      setMessage({ text: '✓ Contraseña cambiada exitosamente.', type: 'success' });
+      setForm({ current: '', newPass: '', confirm: '' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: 'Error al cambiar la contraseña. Intenta de nuevo.', type: 'error' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    }
+  };
+
+  const PasswordInput = ({ id, field, placeholder, label }) => (
+    <div className="input-group">
+      <label className="input-label" htmlFor={id}>{label}</label>
+      <div style={{ position: 'relative' }}>
+        <input
+          id={id}
+          type={show[field] ? 'text' : 'password'}
+          className="input-field"
+          placeholder={placeholder}
+          value={form[field]}
+          onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))}
+          required
+          style={{ paddingRight: '2.75rem' }}
+        />
+        <button
+          type="button"
+          onClick={() => toggleShow(field)}
+          style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem', display: 'flex' }}
+        >
+          {show[field] ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="glass-panel settings-section" style={{ marginTop: '1.5rem' }}>
+      <div className="section-title"><KeyRound size={14} /> Cambiar Contraseña</div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="grid-cols-3">
+          <PasswordInput id="current" field="current" label="Contraseña Actual" placeholder="••••••••" />
+          <PasswordInput id="newPass" field="newPass" label="Nueva Contraseña" placeholder="••••••••" />
+          <PasswordInput id="confirm" field="confirm" label="Confirmar Nueva Contraseña" placeholder="••••••••" />
+        </div>
+
+        {message.text && (
+          <div style={{
+            padding: '0.75rem 1rem', marginTop: '0.75rem',
+            backgroundColor: message.type === 'success' ? 'var(--success-bg)' : 'var(--error-bg)',
+            color: message.type === 'success' ? 'var(--success)' : 'var(--error)',
+            borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontWeight: 500,
+          }}>
+            {message.text}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button type="submit" className="btn btn-secondary" disabled={loading}>
+            {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <KeyRound size={16} />}
+            {loading ? 'Cambiando...' : 'Cambiar Contraseña'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -131,9 +131,6 @@ export default function CustomerRegister() {
   const [qrValue, setQrValue] = useState('');
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
-  const [puntosActuales, setPuntosActuales] = useState(0);
-  const [sellosActuales, setSellosActuales] = useState(0);
-  const [nivelActual, setNivelActual] = useState('Bronce');
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre: '', celular: '' });
 
@@ -217,9 +214,6 @@ export default function CustomerRegister() {
         const card = existingCards[0];
         setTarjetaId(card.id);
         setQrValue(card.qr_value);
-        setPuntosActuales(card.puntos_actuales || 0);
-        setSellosActuales(card.total_sellos || 0);
-        setNivelActual(card.nivel_actual || 'Bronce');
         setSuccess(true);
         setSubmitting(false);
         return;
@@ -262,19 +256,7 @@ export default function CustomerRegister() {
       const res = await fetch('/api/wallet/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tarjetaId,
-          comercioNombre: comercio.nombre,
-          clienteNombre: form.nombre,
-          qrValue,
-          tipoFidelizacion: comercio.tipo_fidelizacion,
-          puntos: puntosActuales,
-          sellos: sellosActuales,
-          nivel: nivelActual,
-          colorFondo: comercio.color_fondo,
-          colorTexto: comercio.color_texto,
-          logoUrl: comercio.logo_url?.startsWith('http') ? comercio.logo_url : null,
-        }),
+        body: JSON.stringify({ tarjetaId }),
       });
 
       const data = await res.json();
@@ -294,21 +276,8 @@ export default function CustomerRegister() {
 
   // ──── APPLE WALLET URL (computed, no JS navigation) ────
   const getAppleWalletUrl = () => {
-    if (!tarjetaId || !comercio) return null;
-    const payload = {
-      tarjetaId,
-      comercioNombre: comercio.nombre,
-      clienteNombre: form.nombre,
-      qrValue,
-      tipoFidelizacion: comercio.tipo_fidelizacion,
-      puntos: puntosActuales,
-      sellos: sellosActuales,
-      nivel: nivelActual,
-      colorFondo: comercio.color_fondo,
-      colorTexto: comercio.color_texto,
-      logoUrl: comercio.logo_url?.startsWith('http') ? comercio.logo_url : null,
-    };
-    return `/api/wallet/apple?data=${encodeURIComponent(JSON.stringify(payload))}`;
+    if (!tarjetaId) return null;
+    return `/api/wallet/apple?tarjetaId=${encodeURIComponent(tarjetaId)}`;
   };
 
   // ──── LOADING STATE ────

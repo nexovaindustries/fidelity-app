@@ -12,6 +12,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', require('./routes/api'));
+app.use('/api/admin', require('./routes/admin'));
 
 const errorHandler = require('./middlewares/errorHandler');
 

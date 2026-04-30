@@ -1,9 +1,11 @@
 // Cloudflare Pages Function — /api/wallet/google
-// Generates a Google Wallet "Save" URL using JWT signed with RS256
+// Genera URL "Guardar en Google Wallet" con datos en tiempo real desde Supabase
+
+import { createClient } from '@supabase/supabase-js';
 
 export async function onRequest(context) {
   const { request, env } = context;
-  
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -11,23 +13,17 @@ export async function onRequest(context) {
     'Content-Type': 'application/json',
   };
 
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
   try {
-    const body = await request.json();
-    const { tarjetaId, comercioNombre, clienteNombre, qrValue, tipoFidelizacion, puntos, sellos, nivel, colorFondo, logoUrl } = body;
-
-    if (!tarjetaId || !comercioNombre || !clienteNombre) {
-      return new Response(JSON.stringify({ error: 'Faltan campos requeridos' }), { status: 400, headers: corsHeaders });
+    const { tarjetaId } = await request.json();
+    if (!tarjetaId) {
+      return new Response(JSON.stringify({ error: 'tarjetaId requerido' }), { status: 400, headers: corsHeaders });
     }
 
-    // Read from Cloudflare environment secrets
     const ISSUER_ID = env.GOOGLE_ISSUER_ID;
     const SERVICE_ACCOUNT_EMAIL = env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
     const PRIVATE_KEY_PEM = env.GOOGLE_PRIVATE_KEY;
@@ -36,37 +32,66 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ error: 'Google Wallet no configurado en el servidor' }), { status: 500, headers: corsHeaders });
     }
 
+    // Leer datos actualizados desde Supabase
+    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data: tarjeta, error } = await supabase
+      .from('tarjetas_activas')
+      .select('*, comercios(*), clientes(*)')
+      .eq('id', tarjetaId)
+      .single();
+
+    if (error || !tarjeta) {
+      return new Response(JSON.stringify({ error: 'Tarjeta no encontrada' }), { status: 404, headers: corsHeaders });
+    }
+
+    const comercio = tarjeta.comercios;
+    const cliente = tarjeta.clientes;
+    const tipo = comercio.tipo_fidelizacion || 'puntos';
+    const config = comercio.config_fidelizacion || {};
+
+    // Calcular progreso actual
+    const progress = getProgressInfo(tarjeta, tipo, config);
+
     const objectId = `${ISSUER_ID}.${tarjetaId.replace(/-/g, '')}`;
     const classId = `${ISSUER_ID}.fidelityLoyaltyClass`;
 
-    // Build the display fields
-    let mainHeader = 'Puntos';
-    let mainBody = String(puntos || 0);
-    if (tipoFidelizacion === 'sellos') {
-      mainHeader = 'Sellos';
-      mainBody = `${sellos || 0} de 10`;
-    } else if (tipoFidelizacion === 'niveles') {
-      mainHeader = 'Nivel';
-      mainBody = nivel || 'Bronce';
+    const textModulesData = [
+      { id: 'saldo', header: progress.mainHeader, body: progress.mainBody },
+      { id: 'prox', header: progress.statusHeader, body: progress.statusBody },
+    ];
+
+    if (config.descripcion_recompensa) {
+      textModulesData.push({ id: 'desc', header: 'Recompensa', body: config.descripcion_recompensa });
     }
+    if (comercio.slogan) {
+      textModulesData.push({ id: 'slogan', header: 'Programa', body: comercio.slogan });
+    }
+
+    const linksUris = [];
+    if (comercio.sitio_web) linksUris.push({ uri: comercio.sitio_web, description: 'Sitio Web', id: 'web' });
+    if (comercio.telefono) linksUris.push({ uri: `tel:${comercio.telefono}`, description: 'Llamar', id: 'tel' });
 
     const genericObject = {
       id: objectId,
       classId,
       genericType: 'GENERIC_TYPE_UNSPECIFIED',
-      hexBackgroundColor: colorFondo || '#1a1a2e',
-      cardTitle: { defaultValue: { language: 'es-ES', value: comercioNombre } },
+      hexBackgroundColor: comercio.color_fondo || '#1a1a2e',
+      cardTitle: { defaultValue: { language: 'es-ES', value: comercio.nombre } },
       subheader: { defaultValue: { language: 'es-ES', value: 'Cliente' } },
-      header: { defaultValue: { language: 'es-ES', value: clienteNombre } },
-      barcode: { type: 'QR_CODE', value: qrValue || tarjetaId, alternateText: qrValue || tarjetaId },
-      textModulesData: [
-        { header: mainHeader, body: mainBody },
-        { header: 'Programa', body: (tipoFidelizacion || 'puntos').toUpperCase() }
-      ],
+      header: { defaultValue: { language: 'es-ES', value: cliente.nombre_completo } },
+      barcode: { type: 'QR_CODE', value: tarjeta.qr_value, alternateText: tarjeta.qr_value },
+      textModulesData,
+      ...(linksUris.length > 0 && { linksModuleData: { uris: linksUris } }),
+      ...(tarjeta.fecha_expiracion && {
+        validTimeInterval: { end: { date: new Date(tarjeta.fecha_expiracion).toISOString() } }
+      }),
     };
 
-    if (logoUrl && logoUrl.startsWith('http')) {
-      genericObject.logo = { sourceUri: { uri: logoUrl } };
+    if (comercio.logo_url?.startsWith('http')) {
+      genericObject.logo = { sourceUri: { uri: comercio.logo_url } };
+    }
+    if (comercio.hero_image_url?.startsWith('http')) {
+      genericObject.heroImage = { sourceUri: { uri: comercio.hero_image_url } };
     }
 
     const jwtPayload = {
@@ -75,66 +100,80 @@ export async function onRequest(context) {
       typ: 'savetowallet',
       iat: Math.floor(Date.now() / 1000),
       origins: [],
-      payload: { genericObjects: [genericObject] }
+      payload: { genericObjects: [genericObject] },
     };
 
-    // Sign JWT with RS256 using Web Crypto API
     const token = await signJWT(jwtPayload, PRIVATE_KEY_PEM);
-    const saveUrl = `https://pay.google.com/gp/v/save/${token}`;
+    return new Response(JSON.stringify({ url: `https://pay.google.com/gp/v/save/${token}`, success: true }), {
+      status: 200,
+      headers: corsHeaders,
+    });
 
-    return new Response(JSON.stringify({ url: saveUrl, success: true }), { status: 200, headers: corsHeaders });
-
-  } catch (error) {
-    console.error('Google Wallet error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+  } catch (err) {
+    console.error('Google Wallet error:', err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
   }
 }
 
-// ──── JWT RS256 Signing using Web Crypto API ────
-async function signJWT(payload, pkcs8Pem) {
-  // Prepare header
-  const header = { alg: 'RS256', typ: 'JWT' };
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  // Import the PEM private key
+function getProgressInfo(tarjeta, tipo, config) {
+  if (tipo === 'sellos') {
+    const meta = config.meta_sellos || 10;
+    const curr = tarjeta.total_sellos || 0;
+    const faltan = Math.max(0, meta - curr);
+    return {
+      mainHeader: 'Sellos',
+      mainBody: `${curr} de ${meta}`,
+      statusHeader: faltan === 0 ? '¡Premio disponible!' : 'Faltan',
+      statusBody: faltan === 0 ? 'Muéstralo al cajero' : `${faltan} sello${faltan !== 1 ? 's' : ''}`,
+    };
+  }
+  if (tipo === 'niveles') {
+    const curr = tarjeta.puntos_actuales || 0;
+    let nextLabel, nextBody;
+    if (curr < 500) { nextLabel = 'Para Plata'; nextBody = `${500 - curr} pts`; }
+    else if (curr < 1000) { nextLabel = 'Para Oro'; nextBody = `${1000 - curr} pts`; }
+    else { nextLabel = 'Nivel Máximo'; nextBody = '¡Felicitaciones!'; }
+    return { mainHeader: 'Nivel', mainBody: tarjeta.nivel_actual || 'Bronce', statusHeader: nextLabel, statusBody: nextBody };
+  }
+  // puntos
+  const meta = config.puntos_para_recompensa || 100;
+  const curr = tarjeta.puntos_actuales || 0;
+  const ciclo = curr % meta;
+  const faltan = ciclo === 0 && curr > 0 ? 0 : meta - ciclo;
+  return {
+    mainHeader: 'Puntos',
+    mainBody: String(curr),
+    statusHeader: faltan === 0 ? '¡Canjea ahora!' : 'Próx. recompensa',
+    statusBody: faltan === 0 ? 'Premio disponible' : `en ${faltan} pts`,
+  };
+}
+
+async function signJWT(payload, pkcs8Pem) {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const encoder = new TextEncoder();
   const pemContents = pkcs8Pem
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
     .replace(/\\n/g, '')
     .replace(/\s/g, '');
-  
   const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-  
   const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey.buffer,
+    'pkcs8', binaryKey.buffer,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
+    false, ['sign']
   );
-
-  // Encode header and payload
-  const encoder = new TextEncoder();
   const headerB64 = base64UrlEncode(encoder.encode(JSON.stringify(header)));
   const payloadB64 = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
   const signingInput = `${headerB64}.${payloadB64}`;
-
-  // Sign
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    encoder.encode(signingInput)
-  );
-
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-
-  return `${signingInput}.${signatureB64}`;
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, encoder.encode(signingInput));
+  return `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
 function base64UrlEncode(buffer) {
-  let binary = '';
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

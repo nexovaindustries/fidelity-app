@@ -1,12 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Settings, QrCode, LogOut, Menu, X, Users, Gift, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Settings, QrCode, LogOut, Menu, X, Users, Gift, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export const Layout = () => {
   const { signOut, user } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      try {
+        const res = await fetch(`${API_URL}/api/admin/check`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        setIsAdmin(res.ok);
+      } catch { /* backend no disponible */ }
+    };
+    checkAdmin();
+  }, [user]);
 
   const mainNavItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -91,6 +109,26 @@ export const Layout = () => {
             );
           })}
         </nav>
+
+        {/* Admin link — solo visible si es admin */}
+        {isAdmin && (
+          <div style={{ padding: '0 0.5rem', marginBottom: '0.5rem' }}>
+            <Link
+              to="/admin"
+              onClick={closeMenu}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                padding: '0.6rem 0.75rem', borderRadius: '10px',
+                background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)',
+                color: 'var(--accent-primary)', fontSize: '0.85rem', fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <ShieldCheck size={16} />
+              Admin Panel
+            </Link>
+          </div>
+        )}
 
         <div className="sidebar-footer">
           {/* Plan Badge */}

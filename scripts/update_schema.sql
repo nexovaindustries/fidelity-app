@@ -22,6 +22,13 @@ ALTER TABLE public.tarjetas_activas
 -- Dado que dependemos de un Service Role Key para el backend
 -- estas columas son modificables y visibles automáticamente por el Service Role.
 
+-- 3. Nuevas columnas de branding, contacto y admin
+ALTER TABLE public.comercios
+  ADD COLUMN IF NOT EXISTS slogan text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS telefono text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS sitio_web text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS owner_email text DEFAULT '';
+
 -- ==============================================
 -- Instrucciones:
 -- Copia este script y ejecútalo en la pestaña "SQL Editor" de tu proyecto de Supabase.
