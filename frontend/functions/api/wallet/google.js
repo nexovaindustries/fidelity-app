@@ -121,13 +121,20 @@ R8hMORCGnUwWhhZfEoWVdQ4=
       genericObject.heroImage = { sourceUri: { uri: comercio.hero_image_url } };
     }
 
+    const genericClass = {
+      id: classId
+    };
+
     const jwtPayload = {
       iss: SERVICE_ACCOUNT_EMAIL,
       aud: 'google',
       typ: 'savetowallet',
       iat: Math.floor(Date.now() / 1000),
       origins: [],
-      payload: { genericObjects: [genericObject] },
+      payload: { 
+        genericClasses: [genericClass],
+        genericObjects: [genericObject] 
+      },
     };
 
     const token = await signJWT(jwtPayload, PRIVATE_KEY_PEM);
