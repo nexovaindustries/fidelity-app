@@ -114,15 +114,23 @@ R8hMORCGnUwWhhZfEoWVdQ4=
       }),
     };
 
-    if (comercio.logo_url?.startsWith('http')) {
-      genericObject.logo = { 
-        sourceUri: { uri: comercio.logo_url },
+    const origin = new URL(request.url).origin;
+
+    if (comercio.logo_url) {
+      const logoSrc = comercio.logo_url.startsWith('http')
+        ? comercio.logo_url
+        : `${origin}/api/image/${comercio.id}?f=logo`;
+      genericObject.logo = {
+        sourceUri: { uri: logoSrc },
         contentDescription: { defaultValue: { language: 'es-ES', value: comercio.nombre || 'Logo' } }
       };
     }
-    if (comercio.hero_image_url?.startsWith('http')) {
-      genericObject.heroImage = { 
-        sourceUri: { uri: comercio.hero_image_url },
+    if (comercio.hero_image_url) {
+      const heroSrc = comercio.hero_image_url.startsWith('http')
+        ? comercio.hero_image_url
+        : `${origin}/api/image/${comercio.id}?f=hero`;
+      genericObject.heroImage = {
+        sourceUri: { uri: heroSrc },
         contentDescription: { defaultValue: { language: 'es-ES', value: 'Imagen principal' } }
       };
     }
