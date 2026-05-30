@@ -83,7 +83,7 @@ R8hMORCGnUwWhhZfEoWVdQ4=
     const classId = `${ISSUER_ID}.fidelityLoyaltyClass`;
 
     const textModulesData = [
-      { id: 'saldo', header: progress.mainHeader, body: progress.mainBody },
+      { id: 'cliente', header: 'Cliente', body: cliente.nombre_completo },
       { id: 'prox', header: progress.statusHeader, body: progress.statusBody },
     ];
 
@@ -104,8 +104,8 @@ R8hMORCGnUwWhhZfEoWVdQ4=
       genericType: 'GENERIC_TYPE_UNSPECIFIED',
       hexBackgroundColor: comercio.color_fondo || '#1a1a2e',
       cardTitle: { defaultValue: { language: 'es-ES', value: comercio.nombre } },
-      subheader: { defaultValue: { language: 'es-ES', value: 'Cliente' } },
-      header: { defaultValue: { language: 'es-ES', value: cliente.nombre_completo } },
+      subheader: { defaultValue: { language: 'es-ES', value: progress.mainHeader } },
+      header: { defaultValue: { language: 'es-ES', value: progress.mainBody } },
       barcode: { type: 'QR_CODE', value: tarjeta.qr_value, alternateText: tarjeta.qr_value },
       textModulesData,
       ...(linksUris.length > 0 && { linksModuleData: { uris: linksUris } }),

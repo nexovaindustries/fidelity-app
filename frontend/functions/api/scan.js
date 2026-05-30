@@ -126,7 +126,6 @@ R8hMORCGnUwWhhZfEoWVdQ4=
   const objectId = `${issuerId}.${updatedCard.id.replace(/-/g, '')}`;
 
   const textModulesData = [
-    { id: 'saldo', header: progress.mainHeader, body: progress.mainBody },
     { id: 'prox', header: progress.statusHeader, body: progress.statusBody },
   ];
   if (config.descripcion_recompensa) {
@@ -136,6 +135,12 @@ R8hMORCGnUwWhhZfEoWVdQ4=
   const accessToken = await getGoogleAccessToken(serviceAccountEmail, privateKeyPem);
   if (!accessToken) throw new Error('Google: no se obtuvo access_token');
 
+  const patchPayload = {
+    header: { defaultValue: { language: 'es-ES', value: progress.mainBody } },
+    subheader: { defaultValue: { language: 'es-ES', value: progress.mainHeader } },
+    textModulesData,
+  };
+
   const res = await fetch(
     `https://walletobjects.googleapis.com/walletobjects/v1/genericObject/${encodeURIComponent(objectId)}`,
     {
@@ -144,7 +149,7 @@ R8hMORCGnUwWhhZfEoWVdQ4=
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ textModulesData }),
+      body: JSON.stringify(patchPayload),
     }
   );
   if (!res.ok) {
