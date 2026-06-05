@@ -192,16 +192,16 @@ export async function onRequest(context) {
 
     const zip = new JSZip();
 
-    // Stamp dots visualization for sellos (e.g. ●●●○○ ○○○○○)
+    // Stamp dots visualization — each dot spaced individually for legibility
     let stampDots = null;
     if (tipo === 'sellos') {
       const meta = config.meta_sellos || 10;
       const curr = tarjeta.total_sellos || 0;
-      const dots = Array.from({ length: meta }, (_, i) => i < curr ? '●' : '○');
-      // Group in chunks of 5 separated by space for readability
+      const dots = Array.from({ length: meta }, (_, i) => i < curr ? '⬤' : '○');
+      // Space each dot individually; extra space between groups of 5
       const chunks = [];
-      for (let i = 0; i < dots.length; i += 5) chunks.push(dots.slice(i, i + 5).join(''));
-      stampDots = chunks.join(' ');
+      for (let i = 0; i < dots.length; i += 5) chunks.push(dots.slice(i, i + 5).join(' '));
+      stampDots = chunks.join('   ');
     }
 
     // Back fields: reward info, contact, terms
@@ -245,11 +245,14 @@ export async function onRequest(context) {
         headerFields: [
           { key: 'saldo', label: progress.mainLabel, value: progress.mainValue }
         ],
-        primaryFields: [],
+        // For sellos: show dots prominently as primary field (large text center)
+        primaryFields: stampDots
+          ? [{ key: 'stamps_viz', label: '', value: stampDots }]
+          : [],
         secondaryFields: [
           { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
           stampDots
-            ? { key: 'sellos', label: `${tarjeta.total_sellos || 0} de ${config.meta_sellos || 10} sellos`, value: stampDots }
+            ? { key: 'premio', label: 'Premio', value: config.descripcion_recompensa || `${config.meta_sellos || 10} sellos = 1 premio` }
             : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
         ],
         ...(comercio.slogan && {
