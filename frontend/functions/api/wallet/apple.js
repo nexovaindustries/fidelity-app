@@ -252,7 +252,7 @@ export async function onRequest(context) {
         secondaryFields: [
           { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
           stampDots
-            ? { key: 'premio', label: 'Premio', value: config.descripcion_recompensa || `${config.meta_sellos || 10} sellos = 1 premio` }
+            ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
             : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
         ],
         ...(comercio.slogan && {
@@ -288,9 +288,19 @@ export async function onRequest(context) {
       return null;
     };
 
-    // Icon & Logo
+    // Icon & Logo — si logo_shape es 'circle', solicitar versión circular al endpoint de imagen
     const blankIcon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    const logoData = (await loadImage(comercio.logo_url)) || blankIcon;
+    const origin = new URL(request.url).origin;
+    let logoData;
+    if (comercio.logo_url) {
+      if (comercio.logo_shape === 'circle') {
+        // Fetch desde el endpoint con máscara circular aplicada server-side
+        logoData = await loadImage(`${origin}/api/image/${comercio.id}?f=logo&circle=true`);
+      } else {
+        logoData = await loadImage(comercio.logo_url);
+      }
+    }
+    logoData = logoData || blankIcon;
     zip.file('icon.png', logoData);
     zip.file('icon@2x.png', logoData);
     zip.file('logo.png', logoData);
