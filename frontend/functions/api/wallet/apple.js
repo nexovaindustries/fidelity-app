@@ -271,6 +271,24 @@ export async function onRequest(context) {
       ...(tarjeta.fecha_expiracion && {
         expirationDate: new Date(tarjeta.fecha_expiracion).toISOString(),
       }),
+      // Notificaciones de proximidad: iOS muestra la tarjeta en lock screen
+      // cuando el cliente está a ~100m de cualquier local registrado
+      ...(() => {
+        const ubicaciones = (config.ubicaciones || []).filter(
+          u => u.lat && u.lng && !isNaN(parseFloat(u.lat)) && !isNaN(parseFloat(u.lng))
+        );
+        if (ubicaciones.length === 0) return {};
+        return {
+          locations: ubicaciones.map(u => ({
+            latitude: parseFloat(u.lat),
+            longitude: parseFloat(u.lng),
+            relevantText: u.nombre
+              ? `${u.nombre} — ${comercio.nombre}`
+              : `¡Visita ${comercio.nombre}! Tu tarjeta te espera.`,
+          })),
+          maxDistance: 150,
+        };
+      })(),
     };
 
     zip.file('pass.json', JSON.stringify(passJson));

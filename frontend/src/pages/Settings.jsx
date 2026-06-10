@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette, QrCode, Link, Smartphone, Copy, Check, Download, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Save, Loader2, Upload, ImageIcon, Trash2, Circle, Square, RectangleHorizontal, Palette, QrCode, Link, Smartphone, Copy, Check, Download, KeyRound, Eye, EyeOff, MapPin, Plus } from 'lucide-react';
 
 const TEMPLATE_COLORS = {
   default:     null,
@@ -53,6 +53,7 @@ export default function Settings() {
       meta_sellos: 10,
       puntos_para_recompensa: 100,
       descripcion_recompensa: '',
+      ubicaciones: [],
     },
   });
   
@@ -95,6 +96,7 @@ export default function Settings() {
             meta_sellos: data.config_fidelizacion?.meta_sellos || 10,
             puntos_para_recompensa: data.config_fidelizacion?.puntos_para_recompensa || 100,
             descripcion_recompensa: data.config_fidelizacion?.descripcion_recompensa || '',
+            ubicaciones: data.config_fidelizacion?.ubicaciones || [],
           },
         });
       }
@@ -532,6 +534,91 @@ export default function Settings() {
               style={{ resize: 'vertical', minHeight: '70px' }}
             />
           </div>
+
+          {/* ===== SECTION: Locations ===== */}
+          <div className="section-divider" />
+          <div className="section-title"><MapPin size={14} /> Ubicaciones de tus Locales</div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+            Cuando el cliente esté a ~100m, Apple Wallet muestra tu tarjeta automáticamente en su pantalla de bloqueo.
+            Puedes agregar hasta 10 locales.
+          </p>
+
+          {(formData.config_fidelizacion.ubicaciones || []).map((loc, idx) => (
+            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                {idx === 0 && <label className="input-label">Nombre del local</label>}
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Ej. Mallplaza"
+                  value={loc.nombre || ''}
+                  onChange={e => {
+                    const updated = [...(formData.config_fidelizacion.ubicaciones || [])];
+                    updated[idx] = { ...updated[idx], nombre: e.target.value };
+                    handleConfigChange('ubicaciones', updated);
+                  }}
+                />
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                {idx === 0 && <label className="input-label">Latitud</label>}
+                <input
+                  type="number"
+                  step="any"
+                  className="input-field"
+                  placeholder="-16.3988"
+                  value={loc.lat || ''}
+                  onChange={e => {
+                    const updated = [...(formData.config_fidelizacion.ubicaciones || [])];
+                    updated[idx] = { ...updated[idx], lat: e.target.value };
+                    handleConfigChange('ubicaciones', updated);
+                  }}
+                />
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                {idx === 0 && <label className="input-label">Longitud</label>}
+                <input
+                  type="number"
+                  step="any"
+                  className="input-field"
+                  placeholder="-71.5350"
+                  value={loc.lng || ''}
+                  onChange={e => {
+                    const updated = [...(formData.config_fidelizacion.ubicaciones || [])];
+                    updated[idx] = { ...updated[idx], lng: e.target.value };
+                    handleConfigChange('ubicaciones', updated);
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                style={{ marginTop: idx === 0 ? '1.4rem' : 0 }}
+                onClick={() => {
+                  const updated = (formData.config_fidelizacion.ubicaciones || []).filter((_, i) => i !== idx);
+                  handleConfigChange('ubicaciones', updated);
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+
+          {(formData.config_fidelizacion.ubicaciones || []).length < 10 && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: '0.5rem' }}
+              onClick={() => {
+                const updated = [...(formData.config_fidelizacion.ubicaciones || []), { nombre: '', lat: '', lng: '' }];
+                handleConfigChange('ubicaciones', updated);
+              }}
+            >
+              <Plus size={14} /> Agregar local
+            </button>
+          )}
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            Tip: busca las coordenadas en <strong>Google Maps</strong> → clic derecho sobre el local → copia lat/lng.
+          </p>
 
           {/* ===== Feedback Message ===== */}
           {message.text && (

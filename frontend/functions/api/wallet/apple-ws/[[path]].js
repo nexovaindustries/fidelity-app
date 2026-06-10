@@ -98,16 +98,23 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
     if (ouAttr?.value) teamId = String(ouAttr.value).trim();
   } catch (_) {}
 
-  // Stamp dots for sellos type
+  // Stamp dots — spaced individually (⬤/○)
   let stampDots = null;
   if (tipo === 'sellos') {
     const meta = config.meta_sellos || 10;
     const curr = tarjeta.total_sellos || 0;
-    const dots = Array.from({ length: meta }, (_, i) => i < curr ? '●' : '○');
+    const dots = Array.from({ length: meta }, (_, i) => i < curr ? '⬤' : '○');
     const chunks = [];
-    for (let i = 0; i < dots.length; i += 5) chunks.push(dots.slice(i, i + 5).join(''));
-    stampDots = chunks.join(' ');
+    for (let i = 0; i < dots.length; i += 5) chunks.push(dots.slice(i, i + 5).join(' '));
+    stampDots = chunks.join('   ');
   }
+
+  // changeMessage para notificación visible al actualizar el pase
+  const changeMsg = tipo === 'sellos'
+    ? '¡Nuevo sello! Tienes %@ ahora 🎯'
+    : tipo === 'niveles'
+    ? '¡Nivel actualizado! Ahora eres %@ ⭐'
+    : '¡Balance actualizado! Tienes %@ 🎉';
 
   const backFields = [];
   if (config.descripcion_recompensa) {
@@ -124,6 +131,18 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
     backFields.push({
       key: 'web', label: 'Sitio Web', value: comercio.sitio_web,
       attributedValue: `<a href="${comercio.sitio_web}">${comercio.sitio_web}</a>`,
+    });
+  }
+  if (comercio.slogan) {
+    backFields.push({ key: 'slogan', label: 'Programa', value: comercio.slogan });
+  }
+  // Campo de notificación de re-engagement — su changeMessage aparece en la pantalla de bloqueo
+  if (tarjeta.notification_message) {
+    backFields.push({
+      key: 'notif',
+      label: 'Para ti',
+      value: new Date().toISOString(), // valor único para garantizar que Apple detecte el cambio
+      changeMessage: tarjeta.notification_message,
     });
   }
   backFields.push({ key: 'id', label: 'ID Tarjeta', value: tarjeta.id.slice(0, 8).toUpperCase() });
@@ -143,21 +162,41 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
     webServiceURL,
     authenticationToken: tarjeta.apple_auth_token,
     storeCard: {
-      headerFields: [{ key: 'saldo', label: progress.mainLabel, value: progress.mainValue }],
+      headerFields: [{
+        key: 'saldo',
+        label: progress.mainLabel,
+        value: progress.mainValue,
+        changeMessage: changeMsg,
+      }],
       primaryFields: [],
       secondaryFields: [
         { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
         stampDots
-          ? { key: 'sellos', label: `${tarjeta.total_sellos || 0} de ${config.meta_sellos || 10} sellos`, value: stampDots }
+          ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
           : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
       ],
-      ...(comercio.slogan && {
-        auxiliaryFields: [{ key: 'slogan', label: 'Programa', value: comercio.slogan }],
-      }),
+      auxiliaryFields: stampDots
+        ? [{ key: 'stamps_viz', label: '', value: stampDots }]
+        : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []),
       ...(backFields.length > 0 && { backFields }),
     },
     barcodes: [{ message: tarjeta.qr_value, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' }],
     ...(tarjeta.fecha_expiracion && { expirationDate: new Date(tarjeta.fecha_expiracion).toISOString() }),
+    // Proximidad: iOS muestra la tarjeta en lock screen cuando el cliente está cerca
+    ...(() => {
+      const ubicaciones = (config.ubicaciones || []).filter(
+        u => u.lat && u.lng && !isNaN(parseFloat(u.lat)) && !isNaN(parseFloat(u.lng))
+      );
+      if (!ubicaciones.length) return {};
+      return {
+        locations: ubicaciones.map(u => ({
+          latitude: parseFloat(u.lat),
+          longitude: parseFloat(u.lng),
+          relevantText: u.nombre ? `${u.nombre} — ${comercio.nombre}` : `¡Visita ${comercio.nombre}!`,
+        })),
+        maxDistance: 150,
+      };
+    })(),
   };
 
   // Helper: load image from HTTP URL or base64 data URL
@@ -349,6 +388,15 @@ async function handleGetPass(request, supabase, env, url, serialNumber) {
 
   const webServiceURL = `${url.origin}/api/wallet/apple-ws`;
   const { passBuffer, comercioNombre } = await buildPassFile(tarjeta, env, webServiceURL);
+
+  // Limpiar notification_message después de enviarlo (fire and forget)
+  if (tarjeta.notification_message) {
+    supabase
+      .from('tarjetas_activas')
+      .update({ notification_message: null })
+      .eq('id', serialNumber)
+      .then(() => {}).catch(() => {});
+  }
 
   return new Response(passBuffer, {
     status: 200,
