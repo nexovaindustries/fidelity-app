@@ -222,6 +222,9 @@ export async function onRequest(context) {
         attributedValue: `<a href="${comercio.sitio_web}">${comercio.sitio_web}</a>`,
       });
     }
+    if (comercio.slogan) {
+      backFields.push({ key: 'slogan', label: 'Programa', value: comercio.slogan });
+    }
     backFields.push({ key: 'id', label: 'ID Tarjeta', value: tarjeta.id.slice(0, 8).toUpperCase() });
 
     // Web service URL for live updates
@@ -245,19 +248,19 @@ export async function onRequest(context) {
         headerFields: [
           { key: 'saldo', label: progress.mainLabel, value: progress.mainValue }
         ],
-        // For sellos: show dots prominently as primary field (large text center)
-        primaryFields: stampDots
-          ? [{ key: 'stamps_viz', label: '', value: stampDots }]
-          : [],
+        // Siempre vacío: primaryFields se superpone al strip/banner image
+        primaryFields: [],
         secondaryFields: [
           { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
           stampDots
             ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
             : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
         ],
-        ...(comercio.slogan && {
-          auxiliaryFields: [{ key: 'slogan', label: 'Programa', value: comercio.slogan }],
-        }),
+        // Dots de sellos en auxiliaryFields (ancho completo, sin truncamiento)
+        // Para otros tipos, el slogan si existe
+        auxiliaryFields: stampDots
+          ? [{ key: 'stamps_viz', label: '', value: stampDots }]
+          : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []),
         ...(backFields.length > 0 && { backFields }),
       },
       barcodes: [{
