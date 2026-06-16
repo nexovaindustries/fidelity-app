@@ -152,6 +152,13 @@ R8hMORCGnUwWhhZfEoWVdQ4=
     };
 
     const token = await signJWT(jwtPayload, PRIVATE_KEY_PEM);
+
+    // PATCH el objeto existente en paralelo (fire & forget).
+    // El JWT "Save to Wallet" NO actualiza objetos ya guardados, solo los crea.
+    // Con el PATCH nos aseguramos de que logo, hero y datos siempre estén al día.
+    patchExistingObject(objectId, genericObject, PRIVATE_KEY_PEM, SERVICE_ACCOUNT_EMAIL)
+      .catch(() => {}); // silencioso — no bloquea la respuesta
+
     return new Response(JSON.stringify({ url: `https://pay.google.com/gp/v/save/${token}`, success: true }), {
       status: 200,
       headers: corsHeaders,
@@ -226,4 +233,53 @@ function base64UrlEncode(buffer) {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Obtiene un access token OAuth2 para la Google Wallet REST API
+async function getAccessToken(serviceAccountEmail, privateKeyPem) {
+  const now = Math.floor(Date.now() / 1000);
+  const jwtPayload = {
+    iss: serviceAccountEmail,
+    sub: serviceAccountEmail,
+    scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+  const assertion = await signJWT(jwtPayload, privateKeyPem);
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${assertion}`,
+  });
+  const data = await res.json();
+  return data.access_token;
+}
+
+// PATCH el objeto existente en Google Wallet con todos los campos actuales
+// (logo, heroImage, colores, balance). Resuelve el problema de que el JWT
+// "Save to Wallet" solo funciona para objetos nuevos.
+async function patchExistingObject(objectId, genericObject, privateKeyPem, serviceAccountEmail) {
+  const accessToken = await getAccessToken(serviceAccountEmail, privateKeyPem);
+  if (!accessToken) return;
+
+  // Solo parchear campos que Google puede actualizar en objetos existentes
+  const patch = {
+    hexBackgroundColor: genericObject.hexBackgroundColor,
+    header:    genericObject.header,
+    subheader: genericObject.subheader,
+    textModulesData: genericObject.textModulesData,
+    ...(genericObject.logo      && { logo: genericObject.logo }),
+    ...(genericObject.heroImage && { heroImage: genericObject.heroImage }),
+    ...(genericObject.linksModuleData && { linksModuleData: genericObject.linksModuleData }),
+  };
+
+  await fetch(
+    `https://walletobjects.googleapis.com/walletobjects/v1/genericObject/${encodeURIComponent(objectId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }
+  );
 }
