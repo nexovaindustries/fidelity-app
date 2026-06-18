@@ -218,16 +218,28 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
   const zip = new JSZip();
   zip.file('pass.json', JSON.stringify(passJson));
 
+  const origin = new URL(webServiceURL).origin;
+
   const blankIcon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-  const logoData = (await loadImage(comercio.logo_url)) || blankIcon;
+  let logoData;
+  if (comercio.logo_url) {
+    logoData = comercio.logo_shape === 'circle'
+      ? await loadImage(`${origin}/api/image/${comercio.id}?f=logo&circle=true`)
+      : await loadImage(comercio.logo_url);
+  }
+  logoData = logoData || blankIcon;
   zip.file('icon.png', logoData);
   zip.file('icon@2x.png', logoData);
   zip.file('logo.png', logoData);
 
-  const stripData = await loadImage(comercio.hero_image_url);
+  // Banner ajustado (sin recortes) a la proporción que exige Apple Wallet
+  const stripData = comercio.hero_image_url
+    ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true`)
+    : null;
   if (stripData) {
     zip.file('strip.png', stripData);
     zip.file('strip@2x.png', stripData);
+    zip.file('strip@3x.png', stripData);
   }
 
   const manifest = {};

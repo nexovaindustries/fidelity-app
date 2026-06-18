@@ -1,6 +1,8 @@
-// Cloudflare Pages Function — /api/image/:comercioId?f=logo|hero&circle=true
+// Cloudflare Pages Function — /api/image/:comercioId?f=logo|hero&circle=true&strip=true
 // Sirve imágenes desde Supabase como HTTP público.
-// ?circle=true aplica máscara circular al logo (soporta PNG y JPEG).
+// ?circle=true  → máscara circular (logos, soporta PNG y JPEG)
+// ?strip=true   → ajusta la imagen a la proporción del banner de Apple Wallet
+//                 (~3:1) SIN recortar, rellenando con el color de fondo del comercio
 
 import { createClient } from '@supabase/supabase-js';
 import jpeg from 'jpeg-js';
@@ -35,31 +37,18 @@ function buildChunk(type, data) {
   return out;
 }
 
-// ─── Convierte píxeles RGBA a PNG circular ─────────────────────────────────────
-async function rgbaToCircularPng(rgba, width, height) {
-  const cx = width / 2, cy = height / 2;
-  const r2 = Math.min(cx, cy) ** 2;
-
-  // Aplicar máscara circular
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const dx = x - cx + 0.5, dy = y - cy + 0.5;
-      if (dx * dx + dy * dy > r2) rgba[(y * width + x) * 4 + 3] = 0;
-    }
-  }
-
-  // Codificar filas PNG con filtro 0 (None)
+// ─── Codifica píxeles RGBA crudos como PNG ─────────────────────────────────────
+async function rgbaToPng(rgba, width, height) {
   const rowSize = 1 + width * 4;
   const rawData = new Uint8Array(height * rowSize);
   for (let y = 0; y < height; y++) {
-    rawData[y * rowSize] = 0;
+    rawData[y * rowSize] = 0; // filtro None
     for (let x = 0; x < width; x++) {
       const s = (y * width + x) * 4, d = y * rowSize + 1 + x * 4;
       rawData.set(rgba.subarray(s, s + 4), d);
     }
   }
 
-  // Comprimir con zlib (deflate con cabecera = lo que usa PNG)
   const cs = new CompressionStream('deflate');
   { const w = cs.writable.getWriter(); w.write(rawData); w.close(); }
   const parts = [];
@@ -70,7 +59,6 @@ async function rgbaToCircularPng(rgba, width, height) {
   let pos = 0;
   for (const p of parts) { compData.set(p, pos); pos += p.length; }
 
-  // Construir PNG RGBA
   const ihdrData = new Uint8Array(13);
   const ihdrDv = new DataView(ihdrData.buffer);
   ihdrDv.setUint32(0, width); ihdrDv.setUint32(4, height);
@@ -87,18 +75,27 @@ async function rgbaToCircularPng(rgba, width, height) {
   return out.buffer;
 }
 
-// ─── JPEG → PNG circular ───────────────────────────────────────────────────────
-async function jpegToCircularPng(jpegBuffer) {
-  const decoded = jpeg.decode(new Uint8Array(jpegBuffer), { useTArray: true });
-  // jpeg-js devuelve RGBA en decoded.data
-  return rgbaToCircularPng(new Uint8Array(decoded.data), decoded.width, decoded.height);
+function applyCircleMaskInPlace(rgba, width, height) {
+  const cx = width / 2, cy = height / 2;
+  const r2 = Math.min(cx, cy) ** 2;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const dx = x - cx + 0.5, dy = y - cy + 0.5;
+      if (dx * dx + dy * dy > r2) rgba[(y * width + x) * 4 + 3] = 0;
+    }
+  }
 }
 
-// ─── PNG → PNG circular ────────────────────────────────────────────────────────
-async function pngToCircularPng(inputBuffer) {
+// ─── Decodifica JPEG/PNG → { rgba, width, height } ─────────────────────────────
+function decodeJpeg(buffer) {
+  const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
+  return { rgba: new Uint8Array(decoded.data), width: decoded.width, height: decoded.height };
+}
+
+function decodePng(inputBuffer) {
   const PNG_SIG = [137, 80, 78, 71, 13, 10, 26, 10];
   const bytes = new Uint8Array(inputBuffer);
-  for (let i = 0; i < 8; i++) if (bytes[i] !== PNG_SIG[i]) return inputBuffer; // no es PNG
+  for (let i = 0; i < 8; i++) if (bytes[i] !== PNG_SIG[i]) return null; // no es PNG
 
   const dv = new DataView(inputBuffer);
   let offset = 8;
@@ -117,9 +114,15 @@ async function pngToCircularPng(inputBuffer) {
     offset += 12 + len;
   }
 
-  if (bitDepth !== 8 || (colorType !== 2 && colorType !== 6) || interlace !== 0) return inputBuffer;
+  if (bitDepth !== 8 || (colorType !== 2 && colorType !== 6) || interlace !== 0) return null;
+  return { idatParts, width, height, colorType };
+}
 
-  // Descomprimir IDAT
+async function decodePngToRgba(inputBuffer) {
+  const parsed = decodePng(inputBuffer);
+  if (!parsed) return null;
+  const { idatParts, width, height, colorType } = parsed;
+
   const idatSize = idatParts.reduce((s, c) => s + c.length, 0);
   const idatCombined = new Uint8Array(idatSize);
   let pos = 0;
@@ -135,7 +138,6 @@ async function pngToCircularPng(inputBuffer) {
   pos = 0;
   for (const p of rawParts) { raw.set(p, pos); pos += p.length; }
 
-  // Desfiltar y extraer RGBA
   const bpp = colorType === 6 ? 4 : 3;
   const stride = width * bpp;
   const rgba = new Uint8Array(width * height * 4);
@@ -173,8 +175,74 @@ async function pngToCircularPng(inputBuffer) {
     }
   }
 
-  return rgbaToCircularPng(rgba, width, height);
+  return { rgba, width, height };
 }
+
+// Decodifica cualquier formato soportado a RGBA. Devuelve null si no se puede.
+async function decodeToRgba(buffer, contentType) {
+  if (contentType === 'image/jpeg' || contentType === 'image/jpg') return decodeJpeg(buffer);
+  if (contentType === 'image/png') return await decodePngToRgba(buffer);
+  return null;
+}
+
+// ─── Redimensiona RGBA (nearest-neighbor) ──────────────────────────────────────
+function resizeRGBA(src, srcW, srcH, dstW, dstH) {
+  const dst = new Uint8Array(dstW * dstH * 4);
+  for (let y = 0; y < dstH; y++) {
+    const srcY = Math.min(srcH - 1, Math.floor((y * srcH) / dstH));
+    for (let x = 0; x < dstW; x++) {
+      const srcX = Math.min(srcW - 1, Math.floor((x * srcW) / dstW));
+      const s = (srcY * srcW + srcX) * 4, d = (y * dstW + x) * 4;
+      dst[d] = src[s]; dst[d+1] = src[s+1]; dst[d+2] = src[s+2]; dst[d+3] = src[s+3];
+    }
+  }
+  return dst;
+}
+
+// Hex (#RRGGBB) → [r,g,b]
+function hexToRgbArray(hex) {
+  if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) return null;
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  if (h.length !== 6) return null;
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+// Ajusta la imagen dentro de un canvas de tamaño fijo SIN recortar (contain),
+// rellenando el espacio sobrante con bgColor.
+function fitToCanvas(srcRgba, srcW, srcH, canvasW, canvasH, bgColor) {
+  const scale = Math.min(canvasW / srcW, canvasH / srcH);
+  const newW = Math.max(1, Math.round(srcW * scale));
+  const newH = Math.max(1, Math.round(srcH * scale));
+  const resized = resizeRGBA(srcRgba, srcW, srcH, newW, newH);
+
+  const canvas = new Uint8Array(canvasW * canvasH * 4);
+  for (let i = 0; i < canvasW * canvasH; i++) {
+    canvas[i*4] = bgColor[0]; canvas[i*4+1] = bgColor[1]; canvas[i*4+2] = bgColor[2]; canvas[i*4+3] = 255;
+  }
+
+  const offsetX = Math.floor((canvasW - newW) / 2);
+  const offsetY = Math.floor((canvasH - newH) / 2);
+
+  for (let y = 0; y < newH; y++) {
+    const dstY = y + offsetY;
+    if (dstY < 0 || dstY >= canvasH) continue;
+    for (let x = 0; x < newW; x++) {
+      const dstX = x + offsetX;
+      if (dstX < 0 || dstX >= canvasW) continue;
+      const s = (y * newW + x) * 4, d = (dstY * canvasW + dstX) * 4;
+      const alpha = resized[s+3] / 255;
+      canvas[d]   = Math.round(resized[s]   * alpha + canvas[d]   * (1 - alpha));
+      canvas[d+1] = Math.round(resized[s+1] * alpha + canvas[d+1] * (1 - alpha));
+      canvas[d+2] = Math.round(resized[s+2] * alpha + canvas[d+2] * (1 - alpha));
+      canvas[d+3] = 255;
+    }
+  }
+  return canvas;
+}
+
+// Dimensiones del strip de Apple Wallet @3x (storeCard sin thumbnail)
+const STRIP_W = 1125, STRIP_H = 369;
 
 // ─── Handler principal ────────────────────────────────────────────────────────
 export async function onRequest(context) {
@@ -183,6 +251,7 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const field = url.searchParams.get('f') === 'hero' ? 'hero_image_url' : 'logo_url';
   const applyCircle = url.searchParams.get('circle') === 'true';
+  const fitStrip = url.searchParams.get('strip') === 'true';
 
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -197,7 +266,7 @@ export async function onRequest(context) {
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const { data } = await supabase
       .from('comercios')
-      .select('logo_url, hero_image_url')
+      .select('logo_url, hero_image_url, color_fondo')
       .eq('id', comercioId)
       .single();
 
@@ -221,13 +290,19 @@ export async function onRequest(context) {
       return new Response('Formato no soportado', { status: 400, headers });
     }
 
-    // Aplicar máscara circular (soporta JPEG y PNG)
     if (applyCircle) {
-      if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
-        binary = await jpegToCircularPng(binary);
+      const decoded = await decodeToRgba(binary, contentType);
+      if (decoded) {
+        applyCircleMaskInPlace(decoded.rgba, decoded.width, decoded.height);
+        binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
         contentType = 'image/png';
-      } else if (contentType === 'image/png') {
-        binary = await pngToCircularPng(binary);
+      }
+    } else if (fitStrip) {
+      const decoded = await decodeToRgba(binary, contentType);
+      if (decoded) {
+        const bg = hexToRgbArray(data?.color_fondo) || [26, 26, 46];
+        const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H, bg);
+        binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
         contentType = 'image/png';
       }
     }

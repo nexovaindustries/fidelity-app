@@ -326,11 +326,15 @@ export async function onRequest(context) {
     zip.file('icon@2x.png', logoData);
     zip.file('logo.png', logoData);
 
-    // Strip / banner image (hero_image_url → strip.png in Apple Wallet)
-    const stripData = await loadImage(comercio.hero_image_url);
+    // Strip / banner image — se solicita ya ajustada (sin recortes) a la
+    // proporción ~3:1 que exige Apple Wallet, con relleno del color de fondo
+    const stripData = comercio.hero_image_url
+      ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true`)
+      : null;
     if (stripData) {
       zip.file('strip.png', stripData);
       zip.file('strip@2x.png', stripData);
+      zip.file('strip@3x.png', stripData);
     }
 
     // Manifest (SHA1 hashes)
