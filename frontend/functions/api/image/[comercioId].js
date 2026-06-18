@@ -185,6 +185,38 @@ async function decodeToRgba(buffer, contentType) {
   return null;
 }
 
+// Límite de seguridad: por encima de esto, decodificar+recodificar píxel a
+// píxel arriesga exceder el límite de CPU de Cloudflare Workers (error 1102).
+// Lee solo el header (barato) para decidir si vale la pena intentar procesar.
+const MAX_SAFE_PIXELS = 600_000; // ~775x775, o el banner ya ajustado (1125x369=415k) entra holgado
+
+function peekImageDimensions(buffer, contentType) {
+  const bytes = new Uint8Array(buffer);
+  try {
+    if (contentType === 'image/png') {
+      const dv = new DataView(buffer);
+      // IHDR siempre es el primer chunk: width en offset 16, height en offset 20
+      return { width: dv.getUint32(16), height: dv.getUint32(20) };
+    }
+    if (contentType === 'image/jpeg' || contentType === 'image/jpg') {
+      let i = 2; // saltar SOI (0xFFD8)
+      while (i < bytes.length - 9) {
+        if (bytes[i] !== 0xFF) { i++; continue; }
+        const marker = bytes[i + 1];
+        // Marcadores SOF0..SOF3, SOF5..SOF7, SOF9..SOF11, SOF13..SOF15 contienen dimensiones
+        if ((marker >= 0xC0 && marker <= 0xCF) && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+          const height = (bytes[i + 5] << 8) | bytes[i + 6];
+          const width = (bytes[i + 7] << 8) | bytes[i + 8];
+          return { width, height };
+        }
+        const segmentLength = (bytes[i + 2] << 8) | bytes[i + 3];
+        i += 2 + segmentLength;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 // ─── Redimensiona RGBA (nearest-neighbor) ──────────────────────────────────────
 function resizeRGBA(src, srcW, srcH, dstW, dstH) {
   const dst = new Uint8Array(dstW * dstH * 4);
@@ -279,20 +311,31 @@ export async function onRequest(context) {
       return new Response('Formato no soportado', { status: 400, headers });
     }
 
-    if (applyCircle) {
-      const decoded = await decodeToRgba(binary, contentType);
-      if (decoded) {
-        applyCircleMaskInPlace(decoded.rgba, decoded.width, decoded.height);
-        binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
-        contentType = 'image/png';
+    // Guard de seguridad: si la imagen es muy grande, NO intentar decodificarla
+    // pixel a pixel — eso es lo que causaba el error 1102 (límite de CPU de
+    // Cloudflare). En ese caso simplemente se sirve la imagen original tal cual.
+    const dims = (applyCircle || fitStrip) ? peekImageDimensions(binary, contentType) : null;
+    const tooLargeToProcess = dims && (dims.width * dims.height) > MAX_SAFE_PIXELS;
+
+    try {
+      if (applyCircle && !tooLargeToProcess) {
+        const decoded = await decodeToRgba(binary, contentType);
+        if (decoded) {
+          applyCircleMaskInPlace(decoded.rgba, decoded.width, decoded.height);
+          binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
+          contentType = 'image/png';
+        }
+      } else if (fitStrip && !tooLargeToProcess) {
+        const decoded = await decodeToRgba(binary, contentType);
+        if (decoded) {
+          const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H);
+          binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
+          contentType = 'image/png';
+        }
       }
-    } else if (fitStrip) {
-      const decoded = await decodeToRgba(binary, contentType);
-      if (decoded) {
-        const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H);
-        binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
-        contentType = 'image/png';
-      }
+    } catch (_) {
+      // Si el procesamiento falla por cualquier motivo, servir la imagen
+      // original sin modificar en vez de fallar la respuesta completa.
     }
 
     return new Response(binary, {
