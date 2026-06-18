@@ -30,9 +30,47 @@ const COLOR_PRESETS = [
   { name: 'Gold', bg: '#1c1917', text: '#fef3c7', accent: '#d97706' },
 ];
 
+// Ajusta logo/banner en el navegador (canvas, sin límite de CPU) antes de
+// subirlo, para que el servidor reciba imágenes ya del tamaño correcto:
+// - logo: recorte cuadrado centrado (600x600)
+// - banner: proporción ~3:1 que exige Apple Wallet (1125x369), con el punto
+//   de recorte sesgado hacia arriba para no perder logos/texto en la parte
+//   superior de la imagen
+function processImageFile(file, mode) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      try {
+        const srcW = img.naturalWidth, srcH = img.naturalHeight;
+        const canvasW = mode === 'banner' ? 1125 : 600;
+        const canvasH = mode === 'banner' ? 369 : 600;
+        const verticalBias = mode === 'banner' ? 0.2 : 0.5;
+
+        const scale = Math.max(canvasW / srcW, canvasH / srcH);
+        const newW = srcW * scale, newH = srcH * scale;
+        const offsetX = (newW - canvasW) * 0.5;
+        const offsetY = (newH - canvasH) * verticalBias;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, -offsetX, -offsetY, newW, newH);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('No se pudo cargar la imagen')); };
+    img.src = objectUrl;
+  });
+}
+
 export default function Settings() {
   const { comercioId } = useAuth();
-  
+
   const [formData, setFormData] = useState({
     nombre: '',
     slogan: '',
@@ -106,36 +144,42 @@ export default function Settings() {
     loadSettings();
   }, [comercioId]);
 
-  const handleFileUpload = (e, field) => {
+  const handleFileUpload = async (e, field) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setMessage({ text: 'El archivo no debe superar 2MB.', type: 'error' });
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage({ text: 'El archivo no debe superar 8MB.', type: 'error' });
       setTimeout(() => setMessage({ text: '', type: '' }), 4000);
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData(prev => ({ ...prev, [field]: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const processed = await processImageFile(file, field === 'hero_image_url' ? 'banner' : 'logo');
+      setFormData(prev => ({ ...prev, [field]: processed }));
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: 'No se pudo procesar la imagen. Intenta con otro archivo.', type: 'error' });
+      setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+    }
   };
 
-  const handleDrop = (e, field, setDragState) => {
+  const handleDrop = async (e, field, setDragState) => {
     e.preventDefault();
     setDragState(false);
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setMessage({ text: 'El archivo no debe superar 2MB.', type: 'error' });
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage({ text: 'El archivo no debe superar 8MB.', type: 'error' });
       setTimeout(() => setMessage({ text: '', type: '' }), 4000);
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData(prev => ({ ...prev, [field]: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const processed = await processImageFile(file, field === 'hero_image_url' ? 'banner' : 'logo');
+      setFormData(prev => ({ ...prev, [field]: processed }));
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: 'No se pudo procesar la imagen. Intenta con otro archivo.', type: 'error' });
+      setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+    }
   };
 
   const handleChange = (e) => {
@@ -484,7 +528,7 @@ export default function Settings() {
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
                   Arrastra tu logo aquí o <span style={{ color: 'var(--accent-primary)', fontWeight: 500 }}>haz click para subir</span>
                 </p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>JPG, PNG o SVG • Máximo 2MB</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>JPG, PNG o SVG • Máximo 8MB • Se recorta automáticamente a cuadrado</p>
                 <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/svg+xml" onChange={(e) => handleFileUpload(e, 'logo_url')} />
               </div>
             )}
@@ -515,6 +559,7 @@ export default function Settings() {
               >
                 <ImageIcon size={22} style={{ color: 'var(--text-muted)', marginBottom: '0.25rem' }} />
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Agrega un banner promocional</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.15rem' }}>Se ajusta automáticamente al ancho de la tarjeta — máximo 8MB</p>
                 <input ref={bannerInputRef} type="file" accept="image/jpeg,image/png,image/svg+xml" onChange={(e) => handleFileUpload(e, 'hero_image_url')} />
               </div>
             )}
