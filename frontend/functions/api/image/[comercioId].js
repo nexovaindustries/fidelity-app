@@ -107,7 +107,7 @@ function decodePng(inputBuffer) {
     const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
     if (type === 'IHDR') {
       width = dv.getUint32(offset + 8); height = dv.getUint32(offset + 12);
-      bitDepth = bytes[offset + 16]; colorType = bytes[offset + 17]; interlace = bytes[offset + 22];
+      bitDepth = bytes[offset + 16]; colorType = bytes[offset + 17]; interlace = bytes[offset + 20];
     } else if (type === 'IDAT') {
       idatParts.push(bytes.slice(offset + 8, offset + 8 + len));
     } else if (type === 'IEND') break;
