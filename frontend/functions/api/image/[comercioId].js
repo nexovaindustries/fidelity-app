@@ -199,42 +199,31 @@ function resizeRGBA(src, srcW, srcH, dstW, dstH) {
   return dst;
 }
 
-// Hex (#RRGGBB) → [r,g,b]
-function hexToRgbArray(hex) {
-  if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) return null;
-  let h = hex.slice(1);
-  if (h.length === 3) h = h.split('').map(c => c + c).join('');
-  if (h.length !== 6) return null;
-  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
-}
-
-// Ajusta la imagen dentro de un canvas de tamaño fijo SIN recortar (contain),
-// rellenando el espacio sobrante con bgColor.
-function fitToCanvas(srcRgba, srcW, srcH, canvasW, canvasH, bgColor) {
-  const scale = Math.min(canvasW / srcW, canvasH / srcH);
+// Llena el canvas COMPLETO (sin relleno/letterbox) recortando el sobrante,
+// pero con el punto de recorte vertical sesgado hacia arriba (verticalBias
+// bajo) para priorizar el contenido superior de la imagen (logos, texto)
+// y recortar de abajo en su lugar.
+function fitToCanvas(srcRgba, srcW, srcH, canvasW, canvasH, verticalBias = 0.2) {
+  const scale = Math.max(canvasW / srcW, canvasH / srcH); // cover: llena todo
   const newW = Math.max(1, Math.round(srcW * scale));
   const newH = Math.max(1, Math.round(srcH * scale));
   const resized = resizeRGBA(srcRgba, srcW, srcH, newW, newH);
 
+  const offsetX = Math.floor((newW - canvasW) * 0.5);
+  const offsetY = Math.floor((newH - canvasH) * verticalBias);
+
   const canvas = new Uint8Array(canvasW * canvasH * 4);
-  for (let i = 0; i < canvasW * canvasH; i++) {
-    canvas[i*4] = bgColor[0]; canvas[i*4+1] = bgColor[1]; canvas[i*4+2] = bgColor[2]; canvas[i*4+3] = 255;
-  }
 
-  const offsetX = Math.floor((canvasW - newW) / 2);
-  const offsetY = Math.floor((canvasH - newH) / 2);
-
-  for (let y = 0; y < newH; y++) {
-    const dstY = y + offsetY;
-    if (dstY < 0 || dstY >= canvasH) continue;
-    for (let x = 0; x < newW; x++) {
-      const dstX = x + offsetX;
-      if (dstX < 0 || dstX >= canvasW) continue;
-      const s = (y * newW + x) * 4, d = (dstY * canvasW + dstX) * 4;
-      const alpha = resized[s+3] / 255;
-      canvas[d]   = Math.round(resized[s]   * alpha + canvas[d]   * (1 - alpha));
-      canvas[d+1] = Math.round(resized[s+1] * alpha + canvas[d+1] * (1 - alpha));
-      canvas[d+2] = Math.round(resized[s+2] * alpha + canvas[d+2] * (1 - alpha));
+  for (let y = 0; y < canvasH; y++) {
+    const srcY = y + offsetY;
+    if (srcY < 0 || srcY >= newH) continue;
+    for (let x = 0; x < canvasW; x++) {
+      const srcX = x + offsetX;
+      if (srcX < 0 || srcX >= newW) continue;
+      const s = (srcY * newW + srcX) * 4, d = (y * canvasW + x) * 4;
+      canvas[d]   = resized[s];
+      canvas[d+1] = resized[s+1];
+      canvas[d+2] = resized[s+2];
       canvas[d+3] = 255;
     }
   }
@@ -266,7 +255,7 @@ export async function onRequest(context) {
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const { data } = await supabase
       .from('comercios')
-      .select('logo_url, hero_image_url, color_fondo')
+      .select('logo_url, hero_image_url')
       .eq('id', comercioId)
       .single();
 
@@ -300,8 +289,7 @@ export async function onRequest(context) {
     } else if (fitStrip) {
       const decoded = await decodeToRgba(binary, contentType);
       if (decoded) {
-        const bg = hexToRgbArray(data?.color_fondo) || [26, 26, 46];
-        const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H, bg);
+        const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H);
         binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
         contentType = 'image/png';
       }
