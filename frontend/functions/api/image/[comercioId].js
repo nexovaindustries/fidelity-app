@@ -313,19 +313,32 @@ export async function onRequest(context) {
 
     // Guard de seguridad: si la imagen es muy grande, NO intentar decodificarla
     // pixel a pixel — eso es lo que causaba el error 1102 (límite de CPU de
-    // Cloudflare). En ese caso simplemente se sirve la imagen original tal cual.
+    // Cloudflare). IMPORTANTE: en ese caso NO se debe devolver la imagen
+    // original sin reducir tampoco — eso solo mueve el problema río abajo:
+    // apple.js terminaría hasheando/firmando un archivo gigante dentro del
+    // .pkpass y exceder su PROPIO límite de CPU igual. Por eso, cuando se pide
+    // una versión procesada (?circle= o ?strip=) y la imagen es demasiado
+    // grande, se responde "no disponible" — el caller (loadImage en apple.js)
+    // ya maneja esto con gracia omitiendo el logo/banner en vez de fallar.
     const dims = (applyCircle || fitStrip) ? peekImageDimensions(binary, contentType) : null;
     const tooLargeToProcess = dims && (dims.width * dims.height) > MAX_SAFE_PIXELS;
 
+    if (tooLargeToProcess) {
+      return new Response('Imagen demasiado grande para procesar — re-sube una versión más liviana desde Configuración', {
+        status: 413,
+        headers,
+      });
+    }
+
     try {
-      if (applyCircle && !tooLargeToProcess) {
+      if (applyCircle) {
         const decoded = await decodeToRgba(binary, contentType);
         if (decoded) {
           applyCircleMaskInPlace(decoded.rgba, decoded.width, decoded.height);
           binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
           contentType = 'image/png';
         }
-      } else if (fitStrip && !tooLargeToProcess) {
+      } else if (fitStrip) {
         const decoded = await decodeToRgba(binary, contentType);
         if (decoded) {
           const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H);
@@ -336,6 +349,8 @@ export async function onRequest(context) {
     } catch (_) {
       // Si el procesamiento falla por cualquier motivo, servir la imagen
       // original sin modificar en vez de fallar la respuesta completa.
+      // (Solo llega aquí si la imagen ya pasó el check de tamaño arriba,
+      // por lo que es razonablemente chica y segura de embeber tal cual.)
     }
 
     return new Response(binary, {
