@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Search, Users, Download, ChevronUp, ChevronDown, Phone, Mail, Calendar, Award } from 'lucide-react';
+import { Search, Users, Download, ChevronUp, ChevronDown, Phone, Mail, Calendar, Award, Cake } from 'lucide-react';
 
 export default function Customers() {
   const { comercioId } = useAuth();
@@ -87,26 +88,38 @@ export default function Customers() {
     return new Date(dateStr).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  const exportCSV = () => {
-    const headers = ['Nombre', 'Email', 'Teléfono', 'Puntos', 'Sellos', 'Nivel', 'Fecha Registro'];
-    const rows = sortedCustomers.map(c => [
-      c.clientes?.nombre_completo || '',
-      c.clientes?.email || '',
-      c.clientes?.telefono || '',
-      c.puntos_actuales || 0,
-      c.total_sellos || 0,
-      c.nivel_actual || '',
-      formatDate(c.created_at),
-    ]);
+  const exportExcel = () => {
+    const headers = [
+      'Nombre completo', 'Teléfono', 'Email', 'Fecha de cumpleaños',
+      'Puntos', 'Sellos', 'Nivel', 'Fecha de registro', 'Fecha de expiración', 'Estado',
+    ];
 
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const rows = sortedCustomers.map(c => {
+      const email = c.clientes?.email || '';
+      const isExpired = c.fecha_expiracion && new Date(c.fecha_expiracion) < new Date();
+      return [
+        c.clientes?.nombre_completo || '',
+        c.clientes?.telefono || '',
+        email.endsWith('@fidelity.customer') ? '' : email,
+        c.clientes?.fecha_nacimiento || '',
+        c.puntos_actuales || 0,
+        c.total_sellos || 0,
+        c.nivel_actual || '',
+        c.created_at ? new Date(c.created_at).toLocaleDateString('es-PE') : '',
+        c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString('es-PE') : '',
+        isExpired ? 'Expirada' : 'Activa',
+      ];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 28 }, { wch: 14 }, { wch: 30 }, { wch: 16 },
+      { wch: 8 },  { wch: 8 },  { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    XLSX.writeFile(wb, `clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (loading) {
@@ -130,9 +143,9 @@ export default function Customers() {
           <h1 className="page-title">Clientes</h1>
           <p className="page-subtitle">{customers.length} tarjetas activas en tu programa</p>
         </div>
-        <button className="btn btn-secondary" onClick={exportCSV} disabled={sortedCustomers.length === 0}>
+        <button className="btn btn-secondary" onClick={exportExcel} disabled={sortedCustomers.length === 0}>
           <Download size={16} />
-          Exportar CSV
+          Exportar Excel
         </button>
       </div>
 
@@ -293,6 +306,12 @@ export default function Customers() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem' }}>
                   <Phone size={16} style={{ color: 'var(--text-muted)' }} />
                   <span>{selectedCustomer.clientes.telefono}</span>
+                </div>
+              )}
+              {selectedCustomer.clientes?.fecha_nacimiento && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem' }}>
+                  <Cake size={16} style={{ color: 'var(--text-muted)' }} />
+                  <span>Cumpleaños: <strong>{new Date(selectedCustomer.clientes.fecha_nacimiento + 'T12:00:00').toLocaleDateString('es-PE', { day: 'numeric', month: 'long' })}</strong></span>
                 </div>
               )}
               {selectedCustomer.nivel_actual && (
