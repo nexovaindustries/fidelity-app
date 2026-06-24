@@ -832,11 +832,40 @@ export default function Settings() {
   );
 }
 
+// Defined outside ChangePasswordSection to keep a stable reference across renders
+// (inline component definitions cause React to remount on every render, losing focus)
+function PasswordField({ id, label, value, show, onToggleShow, onChange }) {
+  return (
+    <div className="input-group">
+      <label className="input-label" htmlFor={id}>{label}</label>
+      <div style={{ position: 'relative' }}>
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          className="input-field"
+          placeholder="••••••••"
+          value={value}
+          onChange={onChange}
+          required
+          style={{ paddingRight: '2.75rem' }}
+        />
+        <button
+          type="button"
+          onClick={onToggleShow}
+          style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem', display: 'flex' }}
+        >
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChangePasswordSection() {
-  const [form, setForm] = useState({ current: '', newPass: '', confirm: '' });
+  const [form, setForm] = useState({ newPass: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
-  const [show, setShow] = useState({ current: false, newPass: false, confirm: false });
+  const [show, setShow] = useState({ newPass: false, confirm: false });
 
   const toggleShow = (field) => setShow(prev => ({ ...prev, [field]: !prev[field] }));
 
@@ -852,31 +881,13 @@ function ChangePasswordSection() {
       setMessage({ text: 'La nueva contraseña debe tener al menos 6 caracteres.', type: 'error' });
       return;
     }
-    if (form.current === form.newPass) {
-      setMessage({ text: 'La nueva contraseña debe ser diferente a la actual.', type: 'error' });
-      return;
-    }
 
     setLoading(true);
     try {
-      // Verificar contraseña actual re-autenticando
-      const { data: { session } } = await supabase.auth.getSession();
-      const email = session?.user?.email;
-      if (!email) throw new Error('Sesión inválida');
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: form.current });
-      if (signInError) {
-        setMessage({ text: 'La contraseña actual es incorrecta.', type: 'error' });
-        setLoading(false);
-        return;
-      }
-
-      // Actualizar contraseña
-      const { error: updateError } = await supabase.auth.updateUser({ password: form.newPass });
-      if (updateError) throw updateError;
-
+      const { error } = await supabase.auth.updateUser({ password: form.newPass });
+      if (error) throw error;
       setMessage({ text: '✓ Contraseña cambiada exitosamente.', type: 'success' });
-      setForm({ current: '', newPass: '', confirm: '' });
+      setForm({ newPass: '', confirm: '' });
     } catch (err) {
       console.error(err);
       setMessage({ text: 'Error al cambiar la contraseña. Intenta de nuevo.', type: 'error' });
@@ -886,40 +897,24 @@ function ChangePasswordSection() {
     }
   };
 
-  const PasswordInput = ({ id, field, placeholder, label }) => (
-    <div className="input-group">
-      <label className="input-label" htmlFor={id}>{label}</label>
-      <div style={{ position: 'relative' }}>
-        <input
-          id={id}
-          type={show[field] ? 'text' : 'password'}
-          className="input-field"
-          placeholder={placeholder}
-          value={form[field]}
-          onChange={e => setForm(prev => ({ ...prev, [field]: e.target.value }))}
-          required
-          style={{ paddingRight: '2.75rem' }}
-        />
-        <button
-          type="button"
-          onClick={() => toggleShow(field)}
-          style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem', display: 'flex' }}
-        >
-          {show[field] ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <div className="glass-panel settings-section" style={{ marginTop: '1.5rem' }}>
       <div className="section-title"><KeyRound size={14} /> Cambiar Contraseña</div>
 
       <form onSubmit={handleSubmit}>
-        <div className="grid-cols-3">
-          <PasswordInput id="current" field="current" label="Contraseña Actual" placeholder="••••••••" />
-          <PasswordInput id="newPass" field="newPass" label="Nueva Contraseña" placeholder="••••••••" />
-          <PasswordInput id="confirm" field="confirm" label="Confirmar Nueva Contraseña" placeholder="••••••••" />
+        <div className="grid-cols-2">
+          <PasswordField
+            id="newPass" label="Nueva Contraseña"
+            value={form.newPass} show={show.newPass}
+            onToggleShow={() => toggleShow('newPass')}
+            onChange={e => setForm(prev => ({ ...prev, newPass: e.target.value }))}
+          />
+          <PasswordField
+            id="confirm" label="Confirmar Nueva Contraseña"
+            value={form.confirm} show={show.confirm}
+            onToggleShow={() => toggleShow('confirm')}
+            onChange={e => setForm(prev => ({ ...prev, confirm: e.target.value }))}
+          />
         </div>
 
         {message.text && (

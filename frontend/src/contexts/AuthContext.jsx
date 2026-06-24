@@ -19,11 +19,14 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen for auth changes — only fetch comercioId on actual sign-in,
+    // not on TOKEN_REFRESHED / USER_UPDATED (avoids ProtectedRoute flash)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchComercioId(session.user.id);
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          fetchComercioId(session.user.id);
+        }
       } else {
         setComercioId(null);
         setLoading(false);
