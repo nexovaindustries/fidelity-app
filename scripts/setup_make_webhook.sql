@@ -57,7 +57,11 @@ begin
     'cliente_id', new.cliente_id,
     'nombre', cliente_row.nombre_completo,
     'telefono', cliente_row.telefono,
-    'email', cliente_row.email,
+    'email', case
+               when cliente_row.email not like '%@fidelity.customer' then cliente_row.email
+               else null
+             end,
+    'fecha_nacimiento', cliente_row.fecha_nacimiento,
     'fecha_registro', new.created_at,
     'comercio_id', new.comercio_id,
     'comercio_nombre', comercio_row.nombre,

@@ -132,7 +132,7 @@ export default function CustomerRegister() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState('');
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ nombre: '', celular: '' });
+  const [form, setForm] = useState({ nombre: '', celular: '', email: '', cumpleanos: '' });
 
   useEffect(() => {
     const load = async () => {
@@ -165,13 +165,18 @@ export default function CustomerRegister() {
     setError('');
     
     if (!form.nombre.trim() || !form.celular.trim()) {
-      setError('Por favor completa todos los campos.');
+      setError('Por favor completa los campos obligatorios.');
       return;
     }
 
     const cleanPhone = form.celular.replace(/\D/g, '');
     if (cleanPhone.length < 7) {
       setError('Ingresa un número de celular válido.');
+      return;
+    }
+
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setError('Ingresa un correo electrónico válido.');
       return;
     }
 
@@ -194,7 +199,8 @@ export default function CustomerRegister() {
           .insert({
             nombre_completo: form.nombre.trim(),
             telefono: cleanPhone,
-            email: `${cleanPhone}@fidelity.customer`,
+            email: form.email.trim() || `${cleanPhone}@fidelity.customer`,
+            fecha_nacimiento: form.cumpleanos || null,
           })
           .select('id')
           .single();
@@ -483,7 +489,7 @@ export default function CustomerRegister() {
             <label style={{ ...s.label, color: fg }}>Número de celular</label>
             <input
               type="tel"
-              placeholder="+52 55 1234 5678"
+              placeholder="+51 999 123 456"
               value={form.celular}
               onChange={(e) => setForm(prev => ({ ...prev, celular: e.target.value }))}
               style={{
@@ -494,6 +500,45 @@ export default function CustomerRegister() {
               }}
               required
               autoComplete="tel"
+            />
+          </div>
+          <div>
+            <label style={{ ...s.label, color: fg }}>
+              Correo electrónico
+              <span style={{ fontWeight: 400, opacity: 0.55, marginLeft: '0.4rem' }}>(opcional)</span>
+            </label>
+            <input
+              type="email"
+              placeholder="ejemplo@correo.com"
+              value={form.email}
+              onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
+              style={{
+                ...s.input,
+                background: inputBg,
+                borderColor: inputBorder,
+                color: fg,
+              }}
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <label style={{ ...s.label, color: fg }}>
+              Fecha de cumpleaños
+              <span style={{ fontWeight: 400, opacity: 0.55, marginLeft: '0.4rem' }}>(opcional)</span>
+            </label>
+            <input
+              type="date"
+              value={form.cumpleanos}
+              onChange={(e) => setForm(prev => ({ ...prev, cumpleanos: e.target.value }))}
+              max={new Date().toISOString().split('T')[0]}
+              style={{
+                ...s.input,
+                background: inputBg,
+                borderColor: inputBorder,
+                color: fg,
+                colorScheme: 'dark',
+              }}
+              autoComplete="bday"
             />
           </div>
 
