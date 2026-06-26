@@ -302,7 +302,7 @@ export async function onRequest(context) {
   }
 
   try {
-    const { comercio_id, qr_value, accion = 'sumar', cantidad = 1 } = await request.json();
+    const { comercio_id, qr_value, accion = 'sumar', cantidad = 1, sede = null } = await request.json();
 
     if (!comercio_id || !qr_value) {
       return new Response(JSON.stringify({ message: 'comercio_id y qr_value son requeridos' }), {
@@ -347,20 +347,24 @@ export async function onRequest(context) {
     // 3. Process by loyalty type
     const tipo = tarjeta.comercios.tipo_fidelizacion || 'puntos';
     let updatePayload = {};
+    let saldo_antes = 0;
+    let saldo_despues = 0;
 
     if (tipo === 'puntos') {
-      const curr = tarjeta.puntos_actuales || 0;
-      updatePayload.puntos_actuales = accion === 'sumar' ? curr + cantidad : Math.max(0, curr - cantidad);
+      saldo_antes = tarjeta.puntos_actuales || 0;
+      saldo_despues = accion === 'sumar' ? saldo_antes + cantidad : Math.max(0, saldo_antes - cantidad);
+      updatePayload.puntos_actuales = saldo_despues;
     } else if (tipo === 'sellos') {
-      const curr = tarjeta.total_sellos || 0;
-      updatePayload.total_sellos = accion === 'sumar' ? curr + cantidad : Math.max(0, curr - cantidad);
+      saldo_antes = tarjeta.total_sellos || 0;
+      saldo_despues = accion === 'sumar' ? saldo_antes + cantidad : Math.max(0, saldo_antes - cantidad);
+      updatePayload.total_sellos = saldo_despues;
     } else if (tipo === 'niveles') {
-      const curr = tarjeta.puntos_actuales || 0;
-      const newPoints = accion === 'sumar' ? curr + cantidad : Math.max(0, curr - cantidad);
-      updatePayload.puntos_actuales = newPoints;
+      saldo_antes = tarjeta.puntos_actuales || 0;
+      saldo_despues = accion === 'sumar' ? saldo_antes + cantidad : Math.max(0, saldo_antes - cantidad);
+      updatePayload.puntos_actuales = saldo_despues;
       let newLevel = 'Bronce';
-      if (newPoints >= 1000) newLevel = 'Oro';
-      else if (newPoints >= 500) newLevel = 'Plata';
+      if (saldo_despues >= 1000) newLevel = 'Oro';
+      else if (saldo_despues >= 500) newLevel = 'Plata';
       updatePayload.nivel_actual = newLevel;
     }
 
@@ -374,13 +378,17 @@ export async function onRequest(context) {
 
     if (updateError) throw updateError;
 
-    // 5. Log transaction (fire and forget)
+    // 5. Log transaction with sede + client info (fire and forget)
     supabase.from('transacciones').insert([{
       comercio_id,
-      tarjeta_id: tarjeta.id,
-      tipo: accion,
+      tarjeta_id:     tarjeta.id,
+      cliente_id:     tarjeta.cliente_id,
+      nombre_cliente: tarjeta.clientes?.nombre_completo || null,
+      sede:           sede || null,
+      accion,
       cantidad,
-      descripcion: `${accion === 'sumar' ? '+' : '-'}${cantidad} ${tipo}`,
+      saldo_antes,
+      saldo_despues,
     }]).then(() => {}).catch(() => {});
 
     // 6 & 7. Wallet updates — run in parallel, capture errors for debugging

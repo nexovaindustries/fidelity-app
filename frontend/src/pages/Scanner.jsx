@@ -58,7 +58,10 @@ function usePhysicalScanner(onScan, enabled) {
       lastKeyTime.current = now;
 
       if (e.key === 'Enter') {
-        const scanned = buffer.current.trim();
+        // Replace ' with - to handle scanners in US keyboard layout on a Spanish OS
+      // (US hyphen key maps to apostrophe in Spanish layout). QR codes never
+      // contain apostrophes so this substitution is always safe.
+      const scanned = buffer.current.trim().replace(/'/g, '-');
         buffer.current = '';
         if (scanned.length >= MIN_QR_LENGTH) {
           onScan(scanned);
@@ -92,6 +95,26 @@ export default function Scanner() {
   const [inputMode, setInputMode] = useState('pistola'); // 'pistola' | 'camara'
   const [autoProcess, setAutoProcess] = useState(true);
   const [pistolaPulse, setPistolaPulse] = useState(false);
+  const [sedes, setSedes] = useState([]);
+  const [sede, setSede] = useState(() => localStorage.getItem('fidelity_sede') || '');
+
+  // ─── Load sedes from comercio config ─────────────────────────────────────────
+  useEffect(() => {
+    if (!comercioId) return;
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('comercios').select('config_fidelizacion').eq('id', comercioId).single()
+        .then(({ data }) => {
+          const ubicaciones = data?.config_fidelizacion?.ubicaciones || [];
+          setSedes(ubicaciones.map(u => u.nombre).filter(Boolean));
+        });
+    });
+  }, [comercioId]);
+
+  // Persist sede selection across scans
+  const handleSedeChange = (val) => {
+    setSede(val);
+    localStorage.setItem('fidelity_sede', val);
+  };
 
   // ─── Camera scanner ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,6 +172,7 @@ export default function Scanner() {
           qr_value: qrValue,
           accion: action,
           cantidad: parseInt(cantidad, 10),
+          sede: sede || null,
         }),
       });
 
@@ -235,9 +259,18 @@ export default function Scanner() {
         )}
       </div>
 
-      {/* ─── Config: action + cantidad (always visible in pistol mode) ─────────── */}
+      {/* ─── Config: sede + action + cantidad (always visible in pistol mode) ────── */}
       {inputMode === 'pistola' && feedback.state === 'idle' && (
         <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          {sedes.length > 0 && (
+            <div className="input-group" style={{ marginBottom: '0.75rem' }}>
+              <label className="input-label" htmlFor="scan-sede">📍 Sede</label>
+              <select id="scan-sede" className="input-field" value={sede} onChange={(e) => handleSedeChange(e.target.value)}>
+                <option value="">— Sin especificar —</option>
+                {sedes.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="input-group" style={{ marginBottom: 0 }}>
               <label className="input-label" htmlFor="scan-action">Operación</label>

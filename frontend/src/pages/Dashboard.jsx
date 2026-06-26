@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, ScanLine, Trophy, TrendingUp, Award, Clock, ArrowUpRight, ArrowDownRight, Zap } from 'lucide-react';
+import { Users, ScanLine, Trophy, Award, Clock, ArrowUpRight, ArrowDownRight, Zap, MapPin } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -16,10 +16,28 @@ export default function Dashboard() {
   });
   const [weeklyData, setWeeklyData] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [lastTx, setLastTx] = useState(null);
 
   useEffect(() => {
     if (!comercioId) return;
     fetchDashboardData();
+
+    // Real-time: update last transaction on every new scan
+    const channel = supabase
+      .channel(`dashboard_${comercioId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'transacciones',
+        filter: `comercio_id=eq.${comercioId}`,
+      }, (payload) => {
+        setLastTx(payload.new);
+        setRecentActivity(prev => [payload.new, ...prev].slice(0, 8));
+        setStats(prev => ({ ...prev, weekScans: prev.weekScans + 1 }));
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, [comercioId]);
 
   const fetchDashboardData = async () => {
@@ -57,6 +75,7 @@ export default function Dashboard() {
         if (!txError && transactions) {
           weekScans = transactions.length;
           activity = transactions.slice(0, 8);
+          if (transactions[0]) setLastTx(transactions[0]);
 
           // Map transactions to days of week
           transactions.forEach(tx => {
@@ -112,8 +131,8 @@ export default function Dashboard() {
     return `hace ${diffDays}d`;
   };
 
-  const getActionLabel = (tipo) => {
-    switch (tipo) {
+  const getActionLabel = (accion) => {
+    switch (accion) {
       case 'sumar': return { text: 'Sumó', icon: ArrowUpRight, color: 'var(--success)' };
       case 'restar': return { text: 'Restó', icon: ArrowDownRight, color: 'var(--warning)' };
       case 'canjear': return { text: 'Canjeó', icon: Award, color: 'var(--accent-primary)' };
@@ -231,17 +250,25 @@ export default function Dashboard() {
           {recentActivity.length > 0 ? (
             <div className="activity-timeline">
               {recentActivity.map((tx, i) => {
-                const action = getActionLabel(tx.tipo);
+                const action = getActionLabel(tx.accion);
                 const Icon = action.icon;
+                const sedeShort = tx.sede ? tx.sede.split(',')[0] : null;
                 return (
                   <div key={tx.id || i} className="activity-item" style={{ animationDelay: `${i * 60}ms` }}>
                     <div className="activity-dot" style={{ backgroundColor: action.color }} />
                     <div className="activity-content">
                       <p className="activity-text">
-                        <strong>{action.text}</strong> {tx.cantidad} {stats.loyaltyType}
-                        {tx.descripcion && <span style={{ opacity: 0.7 }}> — {tx.descripcion}</span>}
+                        <strong>{tx.nombre_cliente || 'Cliente'}</strong>
+                        {' — '}{action.text} {tx.cantidad} {stats.loyaltyType}
                       </p>
-                      <p className="activity-time">{formatRelativeTime(tx.created_at)}</p>
+                      <p className="activity-time" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        {formatRelativeTime(tx.created_at)}
+                        {sedeShort && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', opacity: 0.7 }}>
+                            <MapPin size={10} /> {sedeShort}
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <Icon size={14} style={{ color: action.color, flexShrink: 0, marginTop: '0.3rem' }} />
                   </div>
@@ -259,6 +286,37 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ===== Última Atención ===== */}
+      {lastTx && (
+        <div className="glass-panel" style={{ marginTop: '2rem', borderLeft: '3px solid var(--accent-primary)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Última persona atendida</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatRelativeTime(lastTx.created_at)}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{lastTx.nombre_cliente || 'Cliente'}</p>
+              {lastTx.sede && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <MapPin size={12} /> {lastTx.sede.split(',')[0]}
+                </p>
+              )}
+            </div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <p style={{
+                fontWeight: 700, fontSize: '1.25rem',
+                color: lastTx.accion === 'sumar' ? 'var(--success)' : lastTx.accion === 'canjear' ? 'var(--accent-primary)' : 'var(--warning)',
+              }}>
+                {lastTx.accion === 'sumar' ? '+' : '-'}{lastTx.cantidad} {stats.loyaltyType}
+              </p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {lastTx.saldo_antes} → {lastTx.saldo_despues}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
