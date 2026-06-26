@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, ScanLine, Trophy, Award, Clock, ArrowUpRight, ArrowDownRight, Zap, MapPin } from 'lucide-react';
+import { Users, ScanLine, Trophy, Award, Clock, ArrowUpRight, ArrowDownRight, Zap, MapPin, Megaphone, X, Send } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -18,6 +18,10 @@ export default function Dashboard() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [lastTx, setLastTx] = useState(null);
   const [sedeStats, setSedeStats] = useState([]);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState(null);
 
   useEffect(() => {
     if (!comercioId) return;
@@ -172,6 +176,30 @@ export default function Dashboard() {
 
   const maxBarValue = Math.max(...weeklyData.map(d => d.count), 1);
 
+  const sendBroadcast = async () => {
+    if (!broadcastMsg.trim()) return;
+    setBroadcastSending(true);
+    setBroadcastResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/notify/broadcast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ comercio_id: comercioId, mensaje: broadcastMsg.trim() }),
+      });
+      const data = await res.json();
+      setBroadcastResult(data);
+      if (res.ok) setBroadcastMsg('');
+    } catch {
+      setBroadcastResult({ error: 'Error de conexión' });
+    } finally {
+      setBroadcastSending(false);
+    }
+  };
+
   if (stats.loading) {
     return (
       <div className="stagger-children" style={{ padding: '2rem 0' }}>
@@ -190,10 +218,101 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fade-in">
-      <div className="page-header">
-        <h1 className="page-title">Panel de Control</h1>
-        <p className="page-subtitle">Resumen de tu programa de fidelidad</p>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h1 className="page-title">Panel de Control</h1>
+          <p className="page-subtitle">Resumen de tu programa de fidelidad</p>
+        </div>
+        <button
+          onClick={() => { setShowBroadcast(true); setBroadcastResult(null); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
+            background: 'var(--accent-primary)', color: '#fff', fontWeight: 600, fontSize: '0.85rem',
+            flexShrink: 0, marginTop: '0.25rem',
+          }}
+        >
+          <Megaphone size={16} />
+          Notificación
+        </button>
       </div>
+
+      {/* ===== Modal broadcast ===== */}
+      {showBroadcast && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowBroadcast(false); }}
+        >
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+            borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '480px',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Megaphone size={18} style={{ color: 'var(--accent-primary)' }} />
+                <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Enviar notificación</h3>
+              </div>
+              <button onClick={() => setShowBroadcast(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              El mensaje aparecerá como notificación en el teléfono de todos tus clientes con Apple Wallet.
+            </p>
+
+            <textarea
+              value={broadcastMsg}
+              onChange={(e) => { setBroadcastMsg(e.target.value); setBroadcastResult(null); }}
+              placeholder="Ej: ¡Hoy 2x sellos de 3pm a 6pm! 🎉"
+              maxLength={120}
+              rows={3}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
+                borderRadius: '10px', padding: '0.75rem', color: 'var(--text-primary)',
+                fontSize: '0.9rem', resize: 'none', outline: 'none', fontFamily: 'inherit',
+              }}
+            />
+            <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', marginBottom: '1rem' }}>
+              {broadcastMsg.length}/120
+            </div>
+
+            {broadcastResult && (
+              <div style={{
+                padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.83rem',
+                background: broadcastResult.error ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+                color: broadcastResult.error ? '#f87171' : '#4ade80',
+                border: `1px solid ${broadcastResult.error ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+              }}>
+                {broadcastResult.error
+                  ? `Error: ${broadcastResult.error}`
+                  : `✓ Enviado — ${broadcastResult.push_enviados} dispositivos notificados de ${broadcastResult.tarjetas_actualizadas} tarjetas`
+                }
+              </div>
+            )}
+
+            <button
+              onClick={sendBroadcast}
+              disabled={!broadcastMsg.trim() || broadcastSending}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                padding: '0.7rem', borderRadius: '10px', border: 'none', cursor: broadcastMsg.trim() && !broadcastSending ? 'pointer' : 'not-allowed',
+                background: broadcastMsg.trim() && !broadcastSending ? 'var(--accent-primary)' : 'var(--bg-elevated)',
+                color: broadcastMsg.trim() && !broadcastSending ? '#fff' : 'var(--text-muted)',
+                fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s',
+              }}
+            >
+              <Send size={15} />
+              {broadcastSending ? 'Enviando...' : 'Enviar a todos'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ===== KPI Cards ===== */}
       <div className="grid-cols-4 stagger-children" style={{ marginTop: '0.5rem' }}>
