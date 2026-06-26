@@ -169,9 +169,11 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
       primaryFields: [],
       secondaryFields: [
         { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
-        stampDots
-          ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
-          : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
+        tarjeta.notification_message
+          ? { key: 'promo', label: '📣', value: tarjeta.notification_message }
+          : stampDots
+            ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
+            : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
       ],
       auxiliaryFields: stampDots
         ? [{ key: 'stamps_viz', label: '', value: stampDots }]
@@ -399,14 +401,7 @@ async function handleGetPass(request, supabase, env, url, serialNumber) {
   const webServiceURL = `${url.origin}/api/wallet/apple-ws`;
   const { passBuffer, comercioNombre } = await buildPassFile(tarjeta, env, webServiceURL);
 
-  // Limpiar notification_message después de enviarlo (fire and forget)
-  if (tarjeta.notification_message) {
-    supabase
-      .from('tarjetas_activas')
-      .update({ notification_message: null })
-      .eq('id', serialNumber)
-      .then(() => {}).catch(() => {});
-  }
+  // notification_message persiste en el pase hasta que se envíe uno nuevo
 
   return new Response(passBuffer, {
     status: 200,
