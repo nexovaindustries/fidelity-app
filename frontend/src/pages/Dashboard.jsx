@@ -71,7 +71,7 @@ export default function Dashboard() {
           .eq('comercio_id', comercioId)
           .gte('created_at', oneWeekAgo.toISOString())
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(100);
 
         if (!txError && transactions) {
           weekScans = transactions.length;
@@ -364,6 +364,56 @@ export default function Dashboard() {
                 {lastTx.saldo_antes} → {lastTx.saldo_despues}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Historial de transacciones ===== */}
+      {recentActivity.length > 0 && (
+        <div className="glass-panel" style={{ marginTop: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Historial de transacciones</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>últimas {recentActivity.length}</span>
+          </div>
+          <div style={{ overflowY: 'auto', maxHeight: '420px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                  {['Cliente', 'Acción', 'Sede', 'Saldo', 'Hora'].map(h => (
+                    <th key={h} style={{ padding: '0.4rem 0.6rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentActivity.map((tx, i) => {
+                  const actionInfo = getActionLabel(tx.accion);
+                  const Icon = actionInfo.icon;
+                  const sedeShort = tx.sede ? tx.sede.split(',')[0].trim() : '—';
+                  return (
+                    <tr key={tx.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '0.45rem 0.6rem', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tx.nombre_cliente || 'Cliente'}
+                      </td>
+                      <td style={{ padding: '0.45rem 0.6rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: actionInfo.color, fontWeight: 600 }}>
+                          <Icon size={12} />
+                          {tx.accion === 'sumar' ? '+' : '-'}{tx.cantidad} {stats.loyaltyType}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.45rem 0.6rem', color: 'var(--text-muted)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sedeShort}
+                      </td>
+                      <td style={{ padding: '0.45rem 0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {tx.saldo_antes ?? '—'} → {tx.saldo_despues ?? '—'}
+                      </td>
+                      <td style={{ padding: '0.45rem 0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {formatRelativeTime(tx.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
