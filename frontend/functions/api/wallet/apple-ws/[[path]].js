@@ -159,8 +159,12 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
       headerFields: [{
         key: 'saldo',
         label: progress.mainLabel,
-        value: progress.mainValue,
-        changeMessage: changeMsg,
+        // Trailing space toggles on/off cada broadcast para que iOS detecte cambio
+        value: tarjeta.notification_message
+          ? progress.mainValue + ' '
+          : progress.mainValue,
+        // Cuando hay broadcast, usar el mensaje de la oferta como notificación
+        changeMessage: tarjeta.notification_message || changeMsg,
       }],
       primaryFields: [],
       secondaryFields: [
@@ -169,21 +173,9 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
           ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
           : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
       ],
-      auxiliaryFields: (() => {
-        const base = stampDots
-          ? [{ key: 'stamps_viz', label: '', value: stampDots }]
-          : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []);
-        if (tarjeta.notification_message) {
-          // Campo en el frente — changeMessage dispara notificación visible en iOS
-          base.push({
-            key: 'notif_msg',
-            label: '📣',
-            value: tarjeta.notification_message,
-            changeMessage: tarjeta.notification_message,
-          });
-        }
-        return base;
-      })(),
+      auxiliaryFields: stampDots
+        ? [{ key: 'stamps_viz', label: '', value: stampDots }]
+        : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []),
       ...(backFields.length > 0 && { backFields }),
     },
     barcodes: [{ message: tarjeta.qr_value, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' }],
@@ -226,17 +218,17 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
 
   const origin = new URL(webServiceURL).origin;
 
+  // Logo completo para banner del pase
   const blankIcon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-  let logoData;
-  if (comercio.logo_url) {
-    logoData = comercio.logo_shape === 'circle'
-      ? await loadImage(`${origin}/api/image/${comercio.id}?f=logo&circle=true`)
-      : await loadImage(comercio.logo_url);
-  }
+  let logoData = null;
+  if (comercio.logo_url) logoData = await loadImage(comercio.logo_url);
   logoData = logoData || blankIcon;
-  zip.file('icon.png', logoData);
-  zip.file('icon@2x.png', logoData);
   zip.file('logo.png', logoData);
+
+  // Icons pre-redimensionados (29/58/87 px) — evita CPU timeout con logo grande
+  zip.file('icon.png',    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAB0AAAAdCAYAAABWk2cPAAAACXBIWXMAAAsSAAALEgHS3X78AAABtUlEQVRIie3TTYiPURQG8DFjwsLGRlmyErKyYUGRRBRiFtghWYgQIV+JfM3CV0KyRBkLsWAjX1OyUEqRslA+QpQsJOeny/mPa2YWlhbvU/c995739Dz3nHtOW1uDBg0a/HfAkH+NQ0fup+AOnqAHh7EHR3EevbiCsRnfURO1V4R94oOc21s+TMOzXLfxxW98xYfcvy6fiLiPCQOSw2iMKM6IGNZPuDP3XRiHQ0n2EMvzvAnXsS8i1uNm+j/7g621YCnJwYjYgo3Fpn8khhcizEvfgiQI/MAldGMz1qadj4sRsSEiPlaipQoTC8mYiPiEyZgREdtxBDsiYhX24jguYA7WJcG3zPZGXupNlvUa7uI93qZQwfe0i4voqIh4h5nlobEyRc5hWzbFySzfGcytbv4KS/A0Y7qzpCdwOpvpLJ5XmU5qlXcpDmAhZkfEonKJLM8yrIiInZiV8aeSpDTPatzDblwuz4NdWJP/ujL7v980iYbWXTzIqHRWnVuabTpeVOKtdy4lf5kd3UJvK8M+7n6jUK/2av061/OGqXiAx7iKY9iftgePcCsixg+Y0wYNGjT4L/AT3dvu2IFG73EAAAAASUVORK5CYII=', 'base64'));
+  zip.file('icon@2x.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAADoAAAA6CAYAAADhu0ooAAAACXBIWXMAAAsSAAALEgHS3X78AAAEo0lEQVRoge2XaYjWVRTGZ5y3ISULaqigpkYLNMzIiCCnsYwMqUgLa8oMISnDikzLNosWaF8sMClbLCuSSlo1aK8PaSV9qGiRApGCFrKwGpvpPb84b8+N4/U/MhA0BveB4T13/d9zznOWaWoqKCgoKCgoKCgoKCgoKCgoKCjYQQA0Ay3AVGAJ8BBwp5nNBU4BxgEdwJ7AHma2LzAKOAo4E7gGeMDPAIenO5t2FAA1KbkzsJK/YVRji5l9B2w0s58q9sXxAt2/EzBkMDzWHMaNOY1vaLzU7E+gDvQBvXp8n+ZzNNb0V9e4V7LjON3dMiBlqyjwb2iRlJQ8EVgsDzmeBOYAFwO3AW9rPini+By4XwqmubWiLZpv7DOza4HR+la1spkHhqSNkpsH6MF0pk0fHeFjM9vVzJYHLzpuBy4E7gbO1uNHAz+Ksl8Ca4B7PA6dysBrTmXgM52L3q5L7gHmVTooU3CXSDn9Dnf+9+epMJcUHQP8AByj8QvB+v5gx5Xy5jnAeWb2O3CIlPa5V4CDgaedlsAZwPUejzKQjyPqGZXnb+NZBfFlwAfAClm/S2tOq3XJOynOMkNME726NW51L0r2LEmIwQb9zGwT8Aww3RV1T8pzs4HTgHc1fkm/+wOv6q47gCOCN/9JTIkxCo8RuQdu1uJyjW/U+CDgEd3RHmkNDPM/zc3Qnhkhu6a7n89iiaA4ovhk4BZgppmtAjr9Dfq+G3CcmZ0FXCQ6XweMzahLhbJzozfbxHtfOFVzXt8cnWZ2ieQO0cVpOFQxUleCmaQ9zwFLnZK6Z5iSCYFSZOMPvSaa2fsho/rcGjP7CHhd39ysGP0U+MSpLbpv5dHMqMuioh4XCZPDAw+V7NZz7KMH/Boo7RipGEIWnyD5ZO1bX6Fokl2J44FFwEIz+yZb/1o0XaYE1V/dHZCio5SpHJNCzNaioh5zwFNuWc1fEDydFJ2uZsCxRPtWZx+PjzoAOEHyBLFkrVjxorLrYuBZKb1U5ck9/QXwsJJVJXVT9o1lxS93zE7zZna12q/LtTZcH0LnPAM69nPvSe4GdpN8q/bNrEpGysqtITS2iJa7y8NdYtsisadbraErfZjaxTeUqB4LCiY2/OyGzJPRRM+CylTz3eXAe6LwEzrYZWZHyzM3Kf07pprZuZL9UVcBv4XCXQvlpTcloWCkKZKd4u94pgQ+Vhx6mZqnWnofMF6edRYeKwacBFyqO3qColdsVV5CidgLmCUlPL23ytvtelCb9rWruXbLj/eGW/Odqn+zkiXTR0T7FYG6icYvq1YuVF1drZj3XIAUnKZM/ChwoNpH33u+zp0uGSn5h6/31zBs0/1sryEYCPI+V7LH8oOilQXKbpA3+rQWPfO9Hu+xuDfwreZNa79o/3qVxTHbfWto42p5UxANEccVbWNLVVMdzqSmPrVvPSFxpIY9KZEMkX6/MrM3g0FSCCSDTAk557/7D6YKKZOLym9lD81hqpOb5dHKPVniqw26kgmBAUPV7q0ULe9VG+rZ9UglnA61fiOVcU9Un3uXZ18zezzU/ubB1q2goKCgoKCgoKCgoKCgoKCgoOl/g78AKsw00XabS1MAAAAASUVORK5CYII=', 'base64'));
+  zip.file('icon@3x.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAFcAAABXCAYAAABxyNlsAAAACXBIWXMAAAsSAAALEgHS3X78AAAIdElEQVR4nO2Ze6xdRRXGL/cWuERRHoYK0kJAQBRBrdF/CIhVFKoQgwLFBB9gH9K0viKVhIACNhTBRLFQQBSwyqpFqii1rYpCfaKIESRCtQiKPCptqX3R9TPr3G9O153uc++p9g+4WV+ys/eePTN75pv1nOnpSSQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIbEcAvbr3A8cAHwemAZOA9wJvAfb37932aWY7A2OBtwInqb8PAQfpXzv41TOSgSboJJrZHxiAMRj+vgpYYWa/Bm4B5gBfAD4DfBa4BPg68H3gXjP7K/Bs6Kvc1wPXA/vEhR1xAPp0P7MQYGbPAxuAjbo2NZC9LTD1scn7Vv+OB4HRI45goBfYUc/jgHUiYX0HqS0EbxY5m8K1Ue03FPJUZ7PaxIvwH8ftwUSMelGYCQYG29ehvDfaPOAmTdSlFan/w8By4H4z+7fKNwdymkgrUh7rFKwL34qKFAk+MSx447hf8GAwsW93u2lmj1Zq/yXgODmw3YALgCOBL+p7S7UrqXb8DBgP/LLUK5Iu0g+Ubaah/Roz+73s96s0vu1P8P+rFmxxTqPdQYXy3lB+YzU5n7xjtk/KzB4HJgO7qvxmtf1hkNDi4NaKsE+ows9UZw3wdPiPE3drpQG1FjieNrOPxTEPN+E+XUUN++qGUoltMuoMtOmL/at8R+AODfasUH/vEA0Ue1nsouO1wHv0/FFgDxH5pNp7eHafh1VmthK42hfAzG4A5qvO7xRJjJekXmxmzyiKuLiBXK1N244Xb+cOSfBwcVyxMeHdY8w9toXgGkFCZ0uyxoe+fxpsa9seBjX1WPTNwBXAa4A3SgK9/l7ACcD71d/a4Ix+7OGXnq/V/SL16ZpynmLeUxvMQs1yIdlx5pAmQlJ0suK6+7Wy33abV+qY2cu00r8BvjZkhz2DVN+D8w9I2t4H7Bnq9OvaqQq1NjbNSfcnXTpdxZU4uKT/x2NVkTPV41n1txr4rp6XAN/T8xm6zxdZbksf0RyHJbeS7BXAK+KZRB+oQNZPdgVSiYqYzlWJU7MXvHyMJjxiCBq0LMOT300zLybmpCWStbUgKA1LGdiCh887KtMrTKNh6m/18VJro6Okk50cWKUN6mvj0EOwC4xrVQ9fx/q/Ts0n+2pP1SpdbHVmSW57I7N2WQ1AZJKeZhfzmipxSkr9SGhicXY1RnvOzpXIUrR6j8KIVD92iXf6LbNr2/zuNcSeQKXfPDxPcr4whjGaMwrkhw8fQxebhQi3G0a4DCsqMUs16kfqLATCvxrfYtfO/hlkBusdkzNJZW7K8FObIQqv9vDETPioK6FaqJedh0hDsX9/L196a2jZ0GhL5d+vfTGddWpFba5Pbx9iCxtdf2CX7eTZGShxOl0i1JUta5NLT3xXyn7Ov5intLtjbZbbPs82rtXUzQvsfrldw8U0mv2/0Zccwd0Wm3q94Zi7tbdVnopy8Q195YrhdiiH/GxX637w24061i1zJJP1V4VJrWIl0O+qmwldjeLpRzeqzyL/Mk+e2dN3fA6sdt+Ur9e538z6wgHN3vEAZCBu2EbQ+wJfIY9jS14SSirzjTQHLcPK/faxSVjo5ptk59rysLFesFbSkLearG0zsiztMIMXbJ+avDw6ZzrxZBoV48Q4uHmesjqQ3O04LTajveF80ZWrcIEzsnmIV4+FhCsf/59Lc+0AyS7ibp0BEhrZ0QTMq0slvXgcwNIRtbpOhkrjZsrlDisVDRjB9uPtd06qD7z92hjWhiGyR4L4V3lyr8+7TbRIVmB2pfdtD+SA0tVL9i+nHayJ+hPi9QptbeGh2qr0QikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJnhc8/gsPWtEw9VebnAAAAABJRU5ErkJggg==', 'base64'));
 
   // Banner ajustado (sin recortes) a la proporción que exige Apple Wallet
   const stripData = comercio.hero_image_url
