@@ -136,15 +136,9 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
   if (comercio.slogan) {
     backFields.push({ key: 'slogan', label: 'Programa', value: comercio.slogan });
   }
-  // Campo de notificación de re-engagement — su changeMessage aparece en la pantalla de bloqueo
-  if (tarjeta.notification_message) {
-    backFields.push({
-      key: 'notif',
-      label: 'Para ti',
-      value: new Date().toISOString(), // valor único para garantizar que Apple detecte el cambio
-      changeMessage: tarjeta.notification_message,
-    });
-  }
+  // notification_message se mueve al frente del pase (auxiliaryFields) para que
+  // iOS muestre el changeMessage como notificación visible en pantalla de bloqueo
+
   backFields.push({ key: 'id', label: 'ID Tarjeta', value: tarjeta.id.slice(0, 8).toUpperCase() });
 
   const passJson = {
@@ -175,9 +169,21 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
           ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
           : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
       ],
-      auxiliaryFields: stampDots
-        ? [{ key: 'stamps_viz', label: '', value: stampDots }]
-        : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []),
+      auxiliaryFields: (() => {
+        const base = stampDots
+          ? [{ key: 'stamps_viz', label: '', value: stampDots }]
+          : (comercio.slogan ? [{ key: 'slogan', label: 'Programa', value: comercio.slogan }] : []);
+        if (tarjeta.notification_message) {
+          // Campo en el frente — changeMessage dispara notificación visible en iOS
+          base.push({
+            key: 'notif_msg',
+            label: '📣',
+            value: tarjeta.notification_message,
+            changeMessage: tarjeta.notification_message,
+          });
+        }
+        return base;
+      })(),
       ...(backFields.length > 0 && { backFields }),
     },
     barcodes: [{ message: tarjeta.qr_value, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' }],
