@@ -302,11 +302,7 @@ export async function onRequest(context) {
   }
 
   try {
-    const body = await request.json();
-    const { comercio_id, accion = 'sumar', cantidad = 1 } = body;
-    // Normalize to lowercase — physical HID scanners (e.g. Netum L8BL Pro) often
-    // output uppercase even when the QR code content is lowercase.
-    const qr_value = (body.qr_value ?? '').toLowerCase();
+    const { comercio_id, qr_value, accion = 'sumar', cantidad = 1 } = await request.json();
 
     if (!comercio_id || !qr_value) {
       return new Response(JSON.stringify({ message: 'comercio_id y qr_value son requeridos' }), {
