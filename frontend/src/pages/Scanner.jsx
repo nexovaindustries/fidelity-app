@@ -58,7 +58,7 @@ function usePhysicalScanner(onScan, enabled) {
       lastKeyTime.current = now;
 
       if (e.key === 'Enter') {
-        const scanned = buffer.current.trim();
+        const scanned = buffer.current.trim().toLowerCase();
         buffer.current = '';
         if (scanned.length >= MIN_QR_LENGTH) {
           onScan(scanned);
