@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [weeklyData, setWeeklyData] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [lastTx, setLastTx] = useState(null);
+  const [sedeStats, setSedeStats] = useState([]);
 
   useEffect(() => {
     if (!comercioId) return;
@@ -76,6 +77,21 @@ export default function Dashboard() {
           weekScans = transactions.length;
           activity = transactions.slice(0, 8);
           if (transactions[0]) setLastTx(transactions[0]);
+
+          // First scan per cliente → captación por sede
+          const firstBySede = {};
+          const seen = new Set();
+          transactions.slice().reverse().forEach(tx => {
+            if (tx.cliente_id && tx.sede && !seen.has(tx.cliente_id)) {
+              seen.add(tx.cliente_id);
+              const key = tx.sede.split(',')[0].trim();
+              firstBySede[key] = (firstBySede[key] || 0) + 1;
+            }
+          });
+          const sorted = Object.entries(firstBySede)
+            .sort((a, b) => b[1] - a[1])
+            .map(([nombre, count]) => ({ nombre, count }));
+          setSedeStats(sorted);
 
           // Map transactions to days of week
           transactions.forEach(tx => {
@@ -286,6 +302,40 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ===== Captación por sede ===== */}
+      {sedeStats.length > 0 && (
+        <div className="glass-panel" style={{ marginTop: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Captación por sede</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>primera transacción registrada</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {sedeStats.map((s, i) => {
+              const max = sedeStats[0].count;
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ flexShrink: 0, width: '1.4rem', textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 500, marginBottom: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <MapPin size={11} style={{ marginRight: '0.3rem', opacity: 0.6 }} />
+                      {s.nombre}
+                    </div>
+                    <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${(s.count / max) * 100}%`, background: 'var(--accent-primary)', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
+                    {s.count}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ===== Última Atención ===== */}
       {lastTx && (

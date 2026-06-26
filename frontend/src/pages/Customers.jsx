@@ -88,10 +88,29 @@ export default function Customers() {
     return new Date(dateStr).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    // Fetch first transaction per customer to determine capture sede
+    const clienteIds = sortedCustomers.map(c => c.cliente_id).filter(Boolean);
+    let firstSedePorCliente = {};
+    if (clienteIds.length > 0) {
+      const { data: txs } = await supabase
+        .from('transacciones')
+        .select('cliente_id, sede, created_at')
+        .in('cliente_id', clienteIds)
+        .order('created_at', { ascending: true });
+      if (txs) {
+        txs.forEach(tx => {
+          if (!firstSedePorCliente[tx.cliente_id] && tx.sede) {
+            firstSedePorCliente[tx.cliente_id] = tx.sede.split(',')[0].trim();
+          }
+        });
+      }
+    }
+
     const headers = [
       'Nombre completo', 'Teléfono', 'Email', 'Fecha de cumpleaños',
       'Puntos', 'Sellos', 'Nivel', 'Fecha de registro', 'Fecha de expiración', 'Estado',
+      'Primera sede',
     ];
 
     const rows = sortedCustomers.map(c => {
@@ -108,6 +127,7 @@ export default function Customers() {
         c.created_at ? new Date(c.created_at).toLocaleDateString('es-PE') : '',
         c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString('es-PE') : '',
         isExpired ? 'Expirada' : 'Activa',
+        firstSedePorCliente[c.cliente_id] || '',
       ];
     });
 
@@ -115,6 +135,7 @@ export default function Customers() {
     ws['!cols'] = [
       { wch: 28 }, { wch: 14 }, { wch: 30 }, { wch: 16 },
       { wch: 8 },  { wch: 8 },  { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 10 },
+      { wch: 30 },
     ];
 
     const wb = XLSX.utils.book_new();
