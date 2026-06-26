@@ -159,18 +159,14 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
       headerFields: [{
         key: 'saldo',
         label: progress.mainLabel,
-        // Trailing space toggles on/off cada broadcast para que iOS detecte cambio
-        value: tarjeta.notification_message
-          ? progress.mainValue + ' '
-          : progress.mainValue,
-        // Cuando hay broadcast, usar el mensaje de la oferta como notificación
-        changeMessage: tarjeta.notification_message || changeMsg,
+        value: progress.mainValue,
+        changeMessage: changeMsg,
       }],
       primaryFields: [],
       secondaryFields: [
         { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
         tarjeta.notification_message
-          ? { key: 'promo', label: '📣', value: tarjeta.notification_message }
+          ? { key: 'promo', label: '📣', value: tarjeta.notification_message, changeMessage: tarjeta.notification_message }
           : stampDots
             ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
             : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
