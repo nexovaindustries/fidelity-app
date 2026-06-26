@@ -49,12 +49,15 @@ export default function Dashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('comercio_id', comercioId);
 
-      // 2. Get comercio info
+      // 2. Get comercio info + sedes configuradas
       const { data: comercioInfo } = await supabase
         .from('comercios')
-        .select('tipo_fidelizacion')
+        .select('tipo_fidelizacion, config_fidelizacion')
         .eq('id', comercioId)
         .single();
+
+      const sedesConfiguradas = (comercioInfo?.config_fidelizacion?.ubicaciones || [])
+        .map(u => u.nombre).filter(Boolean);
 
       // 3. Recent transactions (try, gracefully handle if table doesn't exist)
       let weekScans = 0;
@@ -78,20 +81,31 @@ export default function Dashboard() {
           activity = transactions.slice(0, 8);
           if (transactions[0]) setLastTx(transactions[0]);
 
-          // First scan per cliente → captación por sede
-          const firstBySede = {};
-          const seen = new Set();
-          transactions.slice().reverse().forEach(tx => {
-            if (tx.cliente_id && tx.sede && !seen.has(tx.cliente_id)) {
-              seen.add(tx.cliente_id);
-              const key = tx.sede.split(',')[0].trim();
-              firstBySede[key] = (firstBySede[key] || 0) + 1;
-            }
-          });
-          const sorted = Object.entries(firstBySede)
-            .sort((a, b) => b[1] - a[1])
-            .map(([nombre, count]) => ({ nombre, count }));
-          setSedeStats(sorted);
+          // Captación por sede: query all-time separada (no limitada a 7 días)
+          supabase
+            .from('transacciones')
+            .select('cliente_id, sede, created_at')
+            .eq('comercio_id', comercioId)
+            .not('sede', 'is', null)
+            .order('created_at', { ascending: true })
+            .then(({ data: allTx }) => {
+              const firstBySede = {};
+              const seen = new Set();
+              (allTx || []).forEach(tx => {
+                if (tx.cliente_id && !seen.has(tx.cliente_id)) {
+                  seen.add(tx.cliente_id);
+                  const key = tx.sede.split(',')[0].trim();
+                  firstBySede[key] = (firstBySede[key] || 0) + 1;
+                }
+              });
+              // Incluir todas las sedes configuradas (con 0 si no tienen captación)
+              const allSedes = [...new Set([...sedesConfiguradas, ...Object.keys(firstBySede)])];
+              const sorted = allSedes
+                .map(nombre => ({ nombre, count: firstBySede[nombre] || 0 }))
+                .sort((a, b) => b.count - a.count);
+              setSedeStats(sorted);
+            })
+            .catch(() => {});
 
           // Map transactions to days of week
           transactions.forEach(tx => {
@@ -308,11 +322,11 @@ export default function Dashboard() {
         <div className="glass-panel" style={{ marginTop: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Captación por sede</h3>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>primera transacción registrada</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>primer sello registrado</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {sedeStats.map((s, i) => {
-              const max = sedeStats[0].count;
+              const max = Math.max(...sedeStats.map(x => x.count), 1);
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <div style={{ flexShrink: 0, width: '1.4rem', textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -324,10 +338,10 @@ export default function Dashboard() {
                       {s.nombre}
                     </div>
                     <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-elevated)', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${(s.count / max) * 100}%`, background: 'var(--accent-primary)', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                      <div style={{ height: '100%', width: `${(s.count / max) * 100}%`, background: s.count > 0 ? 'var(--accent-primary)' : 'transparent', borderRadius: '3px', transition: 'width 0.4s ease' }} />
                     </div>
                   </div>
-                  <div style={{ flexShrink: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
+                  <div style={{ flexShrink: 0, fontSize: '0.9rem', fontWeight: 700, color: s.count > 0 ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
                     {s.count}
                   </div>
                 </div>
