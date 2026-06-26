@@ -379,17 +379,22 @@ export async function onRequest(context) {
     if (updateError) throw updateError;
 
     // 5. Log transaction with sede + client info (fire and forget)
-    supabase.from('transacciones').insert([{
-      comercio_id,
-      tarjeta_id:     tarjeta.id,
-      cliente_id:     tarjeta.cliente_id,
-      nombre_cliente: tarjeta.clientes?.nombre_completo || null,
-      sede:           sede || null,
-      accion,
-      cantidad,
-      saldo_antes,
-      saldo_despues,
-    }]).then(() => {}).catch(() => {});
+    // Fetch nombre_completo directly — avoids relying on FK join in the Worker
+    supabase.from('clientes').select('nombre_completo').eq('id', tarjeta.cliente_id).single()
+      .then(({ data: clienteData }) => {
+        return supabase.from('transacciones').insert([{
+          comercio_id,
+          tarjeta_id:     tarjeta.id,
+          cliente_id:     tarjeta.cliente_id,
+          nombre_cliente: clienteData?.nombre_completo || null,
+          sede:           sede || null,
+          accion,
+          cantidad,
+          saldo_antes,
+          saldo_despues,
+        }]);
+      })
+      .catch(() => {});
 
     // 6 & 7. Wallet updates — run in parallel, capture errors for debugging
     const [googleResult, appleResult] = await Promise.allSettled([
