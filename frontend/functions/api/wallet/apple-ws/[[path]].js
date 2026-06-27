@@ -168,7 +168,7 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
         {
           key: 'promo',
           label: tarjeta.notification_message ? '📣' : (stampDots ? 'Para ganar' : progress.secondaryLabel),
-          value: tarjeta.notification_message || (stampDots ?  : progress.secondaryValue),
+          value: tarjeta.notification_message || (stampDots ? `${config.meta_sellos || 10} sellos` : progress.secondaryValue),
           changeMessage: '%@',
         },
       ],
