@@ -252,11 +252,12 @@ export async function onRequest(context) {
         primaryFields: [],
         secondaryFields: [
           { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
-          tarjeta.notification_message
-            ? { key: 'promo', label: '📣', value: tarjeta.notification_message }
-            : stampDots
-              ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
-              : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
+          {
+            key: 'promo',
+            label: tarjeta.notification_message ? '📣' : (stampDots ? 'Para ganar' : progress.secondaryLabel),
+            value: tarjeta.notification_message || (stampDots ? `${config.meta_sellos || 10} sellos` : progress.secondaryValue),
+            changeMessage: '%@',
+          },
         ],
         // Dots de sellos en auxiliaryFields (ancho completo, sin truncamiento)
         // Para otros tipos, el slogan si existe

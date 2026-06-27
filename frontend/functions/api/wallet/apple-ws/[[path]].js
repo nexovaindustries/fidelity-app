@@ -165,11 +165,12 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
       primaryFields: [],
       secondaryFields: [
         { key: 'cliente', label: 'Cliente', value: cliente.nombre_completo },
-        tarjeta.notification_message
-          ? { key: 'promo', label: '📣', value: tarjeta.notification_message, changeMessage: tarjeta.notification_message }
-          : stampDots
-            ? { key: 'meta', label: 'Para ganar', value: `${config.meta_sellos || 10} sellos` }
-            : { key: 'prox', label: progress.secondaryLabel, value: progress.secondaryValue },
+        {
+          key: 'promo',
+          label: tarjeta.notification_message ? '📣' : (stampDots ? 'Para ganar' : progress.secondaryLabel),
+          value: tarjeta.notification_message || (stampDots ?  : progress.secondaryValue),
+          changeMessage: '%@',
+        },
       ],
       auxiliaryFields: stampDots
         ? [{ key: 'stamps_viz', label: '', value: stampDots }]
