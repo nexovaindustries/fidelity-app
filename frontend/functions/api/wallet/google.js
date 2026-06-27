@@ -87,6 +87,9 @@ R8hMORCGnUwWhhZfEoWVdQ4=
       { id: 'prox', header: progress.statusHeader, body: progress.statusBody },
     ];
 
+    if (tarjeta.notification_message) {
+      textModulesData.push({ id: 'promo', header: '📣 Novedad', body: tarjeta.notification_message });
+    }
     if (config.descripcion_recompensa) {
       textModulesData.push({ id: 'desc', header: 'Recompensa', body: config.descripcion_recompensa });
     }
