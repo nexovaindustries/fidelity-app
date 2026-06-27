@@ -370,14 +370,23 @@ async function handleListPasses(request, supabase, deviceId, passTypeId) {
   if (!registrations || registrations.length === 0) return new Response(null, { status: 204 });
 
   const serialNumbers = registrations.map(r => r.serial_number);
-  let query = supabase
-    .from('tarjetas_activas')
-    .select('id, apple_pass_updated_at')
-    .in('id', serialNumbers);
-  if (updatedSince) query = query.gt('apple_pass_updated_at', updatedSince);
 
-  const { data: updated } = await query;
-  if (!updated || updated.length === 0) return new Response(null, { status: 204 });
+  // Traer todos los pases del dispositivo con sus campos de actualización
+  const { data: passes } = await supabase
+    .from('tarjetas_activas')
+    .select('id, apple_pass_updated_at, notification_message')
+    .in('id', serialNumbers);
+
+  if (!passes || passes.length === 0) return new Response(null, { status: 204 });
+
+  // Incluir si: timestamp > updatedSince, O si hay notificación pendiente
+  const updated = passes.filter(p =>
+    p.notification_message ||
+    !updatedSince ||
+    (p.apple_pass_updated_at && p.apple_pass_updated_at > updatedSince)
+  );
+
+  if (updated.length === 0) return new Response(null, { status: 204 });
 
   return new Response(JSON.stringify({
     lastUpdated: new Date().toISOString(),
