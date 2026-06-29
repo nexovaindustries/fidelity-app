@@ -46,16 +46,15 @@ function processImageFile(file, mode) {
         const srcW = img.naturalWidth, srcH = img.naturalHeight;
 
         if (mode === 'icon') {
-          // 512x512, contain (sin recorte), fondo blanco
-          const size = 512;
+          // Guardar a 87x87 (@3x) — tamaño máximo que usa Apple Wallet.
+          // iOS usa la misma imagen para las 3 densidades sin procesar más.
+          const size = 87;
           const scale = Math.min(size / srcW, size / srcH);
           const newW = srcW * scale, newH = srcH * scale;
           const offsetX = (size - newW) / 2, offsetY = (size - newH) / 2;
           const canvas = document.createElement('canvas');
           canvas.width = size; canvas.height = size;
           const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, size, size);
           ctx.drawImage(img, offsetX, offsetY, newW, newH);
           resolve(canvas.toDataURL('image/png'));
           return;
