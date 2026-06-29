@@ -46,9 +46,9 @@ function processImageFile(file, mode) {
         const srcW = img.naturalWidth, srcH = img.naturalHeight;
 
         if (mode === 'icon') {
-          // Guardar a 87x87 (@3x) — tamaño máximo que usa Apple Wallet.
-          // iOS usa la misma imagen para las 3 densidades sin procesar más.
-          const size = 87;
+          // 512x512 con fondo blanco opaco — igual que Digital Zeta.
+          // Apple rechaza icon.png con transparencia (alfa), fondo blanco es obligatorio.
+          const size = 512;
           const scale = Math.min(size / srcW, size / srcH);
           const newW = srcW * scale, newH = srcH * scale;
           const offsetX = (size - newW) / 2, offsetY = (size - newH) / 2;
