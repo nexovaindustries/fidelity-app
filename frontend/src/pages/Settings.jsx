@@ -44,6 +44,23 @@ function processImageFile(file, mode) {
       URL.revokeObjectURL(objectUrl);
       try {
         const srcW = img.naturalWidth, srcH = img.naturalHeight;
+
+        if (mode === 'icon') {
+          // 512x512, contain (sin recorte), fondo blanco
+          const size = 512;
+          const scale = Math.min(size / srcW, size / srcH);
+          const newW = srcW * scale, newH = srcH * scale;
+          const offsetX = (size - newW) / 2, offsetY = (size - newH) / 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, offsetX, offsetY, newW, newH);
+          resolve(canvas.toDataURL('image/png'));
+          return;
+        }
+
         const canvasW = mode === 'banner' ? 1125 : 600;
         const canvasH = mode === 'banner' ? 369 : 600;
         const verticalBias = mode === 'banner' ? 0.2 : 0.5;
@@ -84,6 +101,7 @@ export default function Settings() {
     texto_personalizado: '',
     dias_expiracion: 365,
     logo_url: '',
+    icon_url: '',
     hero_image_url: '',
     logo_size: 50,
     logo_shape: 'circle',
@@ -99,8 +117,10 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [logoDragOver, setLogoDragOver] = useState(false);
+  const [iconDragOver, setIconDragOver] = useState(false);
   const [bannerDragOver, setBannerDragOver] = useState(false);
   const logoInputRef = useRef(null);
+  const iconInputRef = useRef(null);
   const bannerInputRef = useRef(null);
 
   useEffect(() => {
@@ -127,6 +147,7 @@ export default function Settings() {
           texto_personalizado: data.texto_personalizado || '',
           dias_expiracion: data.dias_expiracion || 365,
           logo_url: data.logo_url || '',
+          icon_url: data.icon_url || '',
           hero_image_url: data.hero_image_url || '',
           logo_size: data.logo_size || 50,
           logo_shape: data.logo_shape || 'circle',
@@ -153,7 +174,8 @@ export default function Settings() {
       return;
     }
     try {
-      const processed = await processImageFile(file, field === 'hero_image_url' ? 'banner' : 'logo');
+      const mode = field === 'hero_image_url' ? 'banner' : field === 'icon_url' ? 'icon' : 'logo';
+      const processed = await processImageFile(file, mode);
       setFormData(prev => ({ ...prev, [field]: processed }));
     } catch (err) {
       console.error(err);
@@ -173,7 +195,8 @@ export default function Settings() {
       return;
     }
     try {
-      const processed = await processImageFile(file, field === 'hero_image_url' ? 'banner' : 'logo');
+      const mode = field === 'hero_image_url' ? 'banner' : field === 'icon_url' ? 'icon' : 'logo';
+      const processed = await processImageFile(file, mode);
       setFormData(prev => ({ ...prev, [field]: processed }));
     } catch (err) {
       console.error(err);
@@ -530,6 +553,38 @@ export default function Settings() {
                 </p>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>JPG, PNG o SVG • Máximo 8MB • Se recorta automáticamente a cuadrado</p>
                 <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/svg+xml" onChange={(e) => handleFileUpload(e, 'logo_url')} />
+              </div>
+            )}
+          </div>
+
+          {/* Icon Upload */}
+          <div className="input-group">
+            <label className="input-label">Icono de Notificación Wallet
+              <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>— aparece en las alertas de sello en iPhone</span>
+            </label>
+            {formData.icon_url ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <img src={formData.icon_url} alt="Icono" style={{ width: '72px', height: '72px', borderRadius: '16px', objectFit: 'contain', border: '1px solid var(--border-subtle)', background: '#fff' }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Icono guardado — se usará como ícono en notificaciones de Apple Wallet.</p>
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => setFormData(prev => ({ ...prev, icon_url: '' }))}>
+                    <Trash2 size={14} /> Quitar Icono
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`upload-zone ${iconDragOver ? 'dragover' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIconDragOver(true); }}
+                onDragLeave={() => setIconDragOver(false)}
+                onDrop={(e) => handleDrop(e, 'icon_url', setIconDragOver)}
+                onClick={() => iconInputRef.current?.click()}
+                style={{ padding: '1rem' }}
+              >
+                <Smartphone size={22} style={{ color: 'var(--text-muted)', marginBottom: '0.25rem' }} />
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Sube el ícono cuadrado de tu marca</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '0.15rem' }}>Tamaño recomendado: 512×512 px. Solo PNG. Debe ser cuadrado con fondo de color.</p>
+                <input ref={iconInputRef} type="file" accept="image/png,image/jpeg" onChange={(e) => handleFileUpload(e, 'icon_url')} />
               </div>
             )}
           </div>
