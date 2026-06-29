@@ -302,7 +302,8 @@ export async function onRequest(context) {
   const { params, env, request } = context;
   const comercioId = params.comercioId;
   const url = new URL(request.url);
-  const field = url.searchParams.get('f') === 'hero' ? 'hero_image_url' : 'logo_url';
+  const fParam = url.searchParams.get('f');
+  const field = fParam === 'hero' ? 'hero_image_url' : fParam === 'icon' ? 'icon_url' : 'logo_url';
   const applyCircle = url.searchParams.get('circle') === 'true';
   const fitStrip = url.searchParams.get('strip') === 'true';
   const bgHex = url.searchParams.get('bg'); // e.g. '0b2c65' — composite image onto this background
@@ -321,7 +322,7 @@ export async function onRequest(context) {
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     const { data } = await supabase
       .from('comercios')
-      .select('logo_url, hero_image_url')
+      .select('logo_url, hero_image_url, icon_url')
       .eq('id', comercioId)
       .single();
 
