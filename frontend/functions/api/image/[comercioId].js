@@ -243,6 +243,26 @@ function resizeRGBA(src, srcW, srcH, dstW, dstH) {
   return dst;
 }
 
+// Encaja la imagen dentro de un cuadrado (contain — sin recorte), centrando
+// y dejando los bordes transparentes para que compositeOntoBackground los rellene.
+function fitToSquareContain(rgba, srcW, srcH, size) {
+  const scale = Math.min(size / srcW, size / srcH);
+  const newW = Math.max(1, Math.round(srcW * scale));
+  const newH = Math.max(1, Math.round(srcH * scale));
+  const resized = resizeRGBA(rgba, srcW, srcH, newW, newH);
+  const canvas = new Uint8Array(size * size * 4); // transparent (zeros)
+  const ox = Math.floor((size - newW) / 2);
+  const oy = Math.floor((size - newH) / 2);
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      const s = (y * newW + x) * 4, d = ((y + oy) * size + (x + ox)) * 4;
+      canvas[d] = resized[s]; canvas[d+1] = resized[s+1];
+      canvas[d+2] = resized[s+2]; canvas[d+3] = resized[s+3];
+    }
+  }
+  return canvas;
+}
+
 // Llena el canvas COMPLETO (sin relleno/letterbox) recortando el sobrante,
 // pero con el punto de recorte vertical sesgado hacia arriba (verticalBias
 // bajo) para priorizar el contenido superior de la imagen (logos, texto)
@@ -286,6 +306,7 @@ export async function onRequest(context) {
   const applyCircle = url.searchParams.get('circle') === 'true';
   const fitStrip = url.searchParams.get('strip') === 'true';
   const bgHex = url.searchParams.get('bg'); // e.g. '0b2c65' — composite image onto this background
+  const iconSize = parseInt(url.searchParams.get('size') || '0', 10); // resize to NxN square (contain)
 
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -368,6 +389,19 @@ export async function onRequest(context) {
             compositeOntoBackground(fitted, STRIP_W, STRIP_H, r, g, b);
           }
           binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
+          contentType = 'image/png';
+        }
+      } else if (iconSize > 0) {
+        const decoded = await decodeToRgba(binary, contentType);
+        if (decoded) {
+          let out = fitToSquareContain(decoded.rgba, decoded.width, decoded.height, iconSize);
+          if (bgHex) {
+            const r = parseInt(bgHex.slice(0, 2), 16);
+            const g = parseInt(bgHex.slice(2, 4), 16);
+            const b = parseInt(bgHex.slice(4, 6), 16);
+            compositeOntoBackground(out, iconSize, iconSize, r, g, b);
+          }
+          binary = await rgbaToPng(out, iconSize, iconSize);
           contentType = 'image/png';
         }
       } else if (bgHex) {
