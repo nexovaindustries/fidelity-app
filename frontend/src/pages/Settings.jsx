@@ -55,7 +55,7 @@ function processImageFile(file, mode) {
           const canvas = document.createElement('canvas');
           canvas.width = size; canvas.height = size;
           const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = '#0b2c65';
           ctx.fillRect(0, 0, size, size);
           ctx.drawImage(img, offsetX, offsetY, newW, newH);
           resolve(canvas.toDataURL('image/png'));
