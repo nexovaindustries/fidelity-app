@@ -325,12 +325,8 @@ export async function onRequest(context) {
       return null;
     };
 
-    // Logo para el banner del pase (logo.png — tamaño completo)
-    const blankIcon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    let logoData = null;
-    if (comercio.logo_url) logoData = await loadImage(comercio.logo_url);
-    logoData = logoData || blankIcon;
-    zip.file('logo.png', logoData);
+    // Logo: rojo sólido (test — si notificación sale roja, es logo.png el culpable del blanco)
+    zip.file('logo.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAADoAAAA6CAYAAADhu0ooAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAk0lEQVRoge3XwQ0EIQwEwc4/xs1lLomTvNLWgz8Ypmx6al9YXW/AQXOj83ST0cHoeYGU2kv66AwMzwvyI6OZdWeoz++lcyhgFIwGo2DUORQwCkaDUTDqHAoYBaPBKBh1DgWMgtFgFIw6hwJGwWgwCkadQwGjYDQYBaPOoYBRMBqMglHnUMAoGA1GwahzKGDU/4rwA4e0YzU3XNmqAAAAAElFTkSuQmCC', 'base64'));
 
     // Icons: rojo sólido (test definitivo — si sigue blanco en notificaciones, iOS no usa icon.png)
     zip.file('icon.png',    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAB0AAAAdCAYAAABWk2cPAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAO0lEQVRIie2XwQkAQAjDsv+M3SVucXCQh+9C0TYy8PWQ6LKXFolOxsLBsne1DPUpkYMxkiHogm0+eSsOxNwYzh9RTwcAAAAASUVORK5CYII=', 'base64'));
