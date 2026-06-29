@@ -54,19 +54,32 @@ function getProgressInfo(tarjeta, tipo, config) {
   };
 }
 
+// Caché de objetos pesados de forge (se reutilizan entre requests del mismo isolate)
+const _forgeCache = {};
+
+function getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem) {
+  const cacheKey = signerCertPem.slice(0, 40);
+  if (!_forgeCache[cacheKey]) {
+    _forgeCache[cacheKey] = {
+      signerCert: forge.pki.certificateFromPem(fixPem(signerCertPem)),
+      privateKey: forge.pki.decryptRsaPrivateKey(fixPem(signerKeyPem)) ||
+                  forge.pki.privateKeyFromPem(fixPem(signerKeyPem)),
+      wwdrCert: wwdrCertPem ? forge.pki.certificateFromPem(fixPem(wwdrCertPem)) : null,
+    };
+  }
+  return _forgeCache[cacheKey];
+}
+
 function createPkcs7Signature(manifestBuffer, signerCertPem, signerKeyPem, wwdrCertPem) {
   try {
+    const { signerCert, privateKey, wwdrCert } = getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem);
+
     const p7 = forge.pkcs7.createSignedData();
     p7.content = new forge.util.ByteStringBuffer(manifestBuffer);
 
-    const signerCert = forge.pki.certificateFromPem(fixPem(signerCertPem));
-    if (wwdrCertPem) {
-      p7.addCertificate(forge.pki.certificateFromPem(fixPem(wwdrCertPem)));
-    }
+    if (wwdrCert) p7.addCertificate(wwdrCert);
     p7.addCertificate(signerCert);
 
-    const privateKey = forge.pki.decryptRsaPrivateKey(fixPem(signerKeyPem)) ||
-                       forge.pki.privateKeyFromPem(fixPem(signerKeyPem));
     p7.addSigner({
       key: privateKey,
       certificate: signerCert,

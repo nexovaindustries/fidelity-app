@@ -59,14 +59,27 @@ function getProgressInfo(tarjeta, tipo, config) {
   };
 }
 
+const _forgeCache = {};
+
+function getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem) {
+  const cacheKey = signerCertPem.slice(0, 40);
+  if (!_forgeCache[cacheKey]) {
+    _forgeCache[cacheKey] = {
+      signerCert: forge.pki.certificateFromPem(fixPem(signerCertPem)),
+      privateKey: forge.pki.decryptRsaPrivateKey(fixPem(signerKeyPem)) ||
+                  forge.pki.privateKeyFromPem(fixPem(signerKeyPem)),
+      wwdrCert: wwdrCertPem ? forge.pki.certificateFromPem(fixPem(wwdrCertPem)) : null,
+    };
+  }
+  return _forgeCache[cacheKey];
+}
+
 function createPkcs7Signature(manifestBuffer, signerCertPem, signerKeyPem, wwdrCertPem) {
+  const { signerCert, privateKey, wwdrCert } = getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem);
   const p7 = forge.pkcs7.createSignedData();
   p7.content = new forge.util.ByteStringBuffer(manifestBuffer);
-  const signerCert = forge.pki.certificateFromPem(fixPem(signerCertPem));
-  if (wwdrCertPem) p7.addCertificate(forge.pki.certificateFromPem(fixPem(wwdrCertPem)));
+  if (wwdrCert) p7.addCertificate(wwdrCert);
   p7.addCertificate(signerCert);
-  const privateKey = forge.pki.decryptRsaPrivateKey(fixPem(signerKeyPem)) ||
-                     forge.pki.privateKeyFromPem(fixPem(signerKeyPem));
   p7.addSigner({
     key: privateKey, certificate: signerCert,
     digestAlgorithm: forge.pki.oids.sha1,
@@ -91,9 +104,10 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
   let passTypeId = (APPLE_PASS_TYPE_ID || 'pass.com.nexova.fidelity').trim();
   let teamId = (APPLE_TEAM_ID || 'D734HNJ3VC').trim();
   try {
-    const cert = forge.pki.certificateFromPem(fixPem(APPLE_CER));
-    const uidAttr = cert.subject.attributes.find(a => a.shortName === 'UID' || a.name === 'UID');
-    const ouAttr = cert.subject.attributes.find(a => a.shortName === 'OU' || a.name === 'OU');
+    // Reutilizar el cert ya parseado del caché de forge
+    const { signerCert } = getParsedCerts(APPLE_CER, APPLE_KEY, APPLE_WWDR);
+    const uidAttr = signerCert.subject.attributes.find(a => a.shortName === 'UID' || a.name === 'UID');
+    const ouAttr = signerCert.subject.attributes.find(a => a.shortName === 'OU' || a.name === 'OU');
     if (uidAttr?.value) passTypeId = String(uidAttr.value).trim();
     if (ouAttr?.value) teamId = String(ouAttr.value).trim();
   } catch (_) {}
