@@ -243,9 +243,8 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
   zip.file('icon@3x.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAFcAAABXCAYAAABxyNlsAAAACXBIWXMAAAPoAAAD6AG1e1JrAAABOElEQVR4nO3YQQ0DMRTE0L2XimmFP4QpiGrlVPLhE3hy5pDnw1l3XjF4gj2vxRUu4e4fX1jlEu7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5f16X2tLeo2LA+5hAAAAAElFTkSuQmCC', 'base64'));
 
   // Banner ajustado (sin recortes) a la proporción que exige Apple Wallet
-  const stripData = comercio.hero_image_url
-    ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true`)
-    : null;
+  // TEST: strip deshabilitado para aislar thumbnail blanco en notificación
+  const stripData = null;
   if (stripData) {
     zip.file('strip.png', stripData);
     zip.file('strip@2x.png', stripData);
