@@ -86,6 +86,18 @@ function applyCircleMaskInPlace(rgba, width, height) {
   }
 }
 
+function compositeOntoBackground(rgba, width, height, r, g, b) {
+  for (let i = 0; i < width * height; i++) {
+    const a = rgba[i * 4 + 3] / 255;
+    if (a < 1) {
+      rgba[i * 4]     = Math.round(r * (1 - a) + rgba[i * 4]     * a);
+      rgba[i * 4 + 1] = Math.round(g * (1 - a) + rgba[i * 4 + 1] * a);
+      rgba[i * 4 + 2] = Math.round(b * (1 - a) + rgba[i * 4 + 2] * a);
+      rgba[i * 4 + 3] = 255;
+    }
+  }
+}
+
 // ─── Decodifica JPEG/PNG → { rgba, width, height } ─────────────────────────────
 function decodeJpeg(buffer) {
   const decoded = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
@@ -273,6 +285,7 @@ export async function onRequest(context) {
   const field = url.searchParams.get('f') === 'hero' ? 'hero_image_url' : 'logo_url';
   const applyCircle = url.searchParams.get('circle') === 'true';
   const fitStrip = url.searchParams.get('strip') === 'true';
+  const bgHex = url.searchParams.get('bg'); // e.g. '0b2c65' — composite image onto this background
 
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -335,6 +348,12 @@ export async function onRequest(context) {
         const decoded = await decodeToRgba(binary, contentType);
         if (decoded) {
           applyCircleMaskInPlace(decoded.rgba, decoded.width, decoded.height);
+          if (bgHex) {
+            const r = parseInt(bgHex.slice(0, 2), 16);
+            const g = parseInt(bgHex.slice(2, 4), 16);
+            const b = parseInt(bgHex.slice(4, 6), 16);
+            compositeOntoBackground(decoded.rgba, decoded.width, decoded.height, r, g, b);
+          }
           binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
           contentType = 'image/png';
         }
@@ -342,7 +361,23 @@ export async function onRequest(context) {
         const decoded = await decodeToRgba(binary, contentType);
         if (decoded) {
           const fitted = fitToCanvas(decoded.rgba, decoded.width, decoded.height, STRIP_W, STRIP_H);
+          if (bgHex) {
+            const r = parseInt(bgHex.slice(0, 2), 16);
+            const g = parseInt(bgHex.slice(2, 4), 16);
+            const b = parseInt(bgHex.slice(4, 6), 16);
+            compositeOntoBackground(fitted, STRIP_W, STRIP_H, r, g, b);
+          }
           binary = await rgbaToPng(fitted, STRIP_W, STRIP_H);
+          contentType = 'image/png';
+        }
+      } else if (bgHex) {
+        const decoded = await decodeToRgba(binary, contentType);
+        if (decoded) {
+          const r = parseInt(bgHex.slice(0, 2), 16);
+          const g = parseInt(bgHex.slice(2, 4), 16);
+          const b = parseInt(bgHex.slice(4, 6), 16);
+          compositeOntoBackground(decoded.rgba, decoded.width, decoded.height, r, g, b);
+          binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
           contentType = 'image/png';
         }
       }

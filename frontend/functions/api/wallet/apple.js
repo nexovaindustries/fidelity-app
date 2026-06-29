@@ -325,8 +325,11 @@ export async function onRequest(context) {
       return null;
     };
 
-    // Logo para el banner del pase (logo.png — tamaño completo)
-    const logoData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAKAAAAAyCAYAAADbYdBlAAAACXBIWXMAAAPoAAAD6AG1e1JrAAABHElEQVR4nO2UQQ3AQACD7o+V2Zp/CTcZawIPDBTSw/PeaAN+2uAUX/Hx4wYFWIC3AIvgWjfoAQckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIOYDB4Uur+wyE+YAAAAASUVORK5CYII=', 'base64');
+    // Logo para el banner del pase — se carga desde la imagen del comercio
+    // con fondo navy sólido para que el ícono de notificación en iPhone no aparezca blanco
+    const origin = new URL(request.url).origin;
+    const navyLogoFallback = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAKAAAAAyCAYAAADbYdBlAAAACXBIWXMAAAPoAAAD6AG1e1JrAAABHElEQVR4nO2UQQ3AQACD7o+V2Zp/CTcZawIPDBTSw/PeaAN+2uAUX/Hx4wYFWIC3AIvgWjfoAQckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIOYDB4Uur+wyE+YAAAAASUVORK5CYII=', 'base64');
+    const logoData = (comercio.logo_url && await loadImage(`${origin}/api/image/${comercio.id}?f=logo&bg=0b2c65`)) || navyLogoFallback;
     zip.file('logo.png', logoData);
 
     // Icons: fondo azul marino con texto DC (prueba de visibilidad en notificaciones iPhone)
@@ -337,7 +340,7 @@ export async function onRequest(context) {
     // Strip / banner image — se solicita ya ajustada (sin recortes) a la
     // proporción ~3:1 que exige Apple Wallet, con relleno del color de fondo
     const stripData = comercio.hero_image_url
-      ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true`)
+      ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true&bg=0b2c65`)
       : null;
     if (stripData) {
       zip.file('strip.png', stripData);

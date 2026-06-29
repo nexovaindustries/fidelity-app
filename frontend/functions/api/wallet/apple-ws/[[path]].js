@@ -231,20 +231,20 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
 
   const origin = new URL(webServiceURL).origin;
 
-  // Logo completo para banner del pase
-  // Forzar logo navy sólido para diagnosticar notificación iPhone blanca
+  // Logo: se carga desde el endpoint de imagen con fondo navy sólido para que
+  // los píxeles transparentes (fuera del círculo) no aparezcan blancos en notificaciones iPhone
   const navyLogoFallback = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAKAAAAAyCAYAAADbYdBlAAAACXBIWXMAAAPoAAAD6AG1e1JrAAABHElEQVR4nO2UQQ3AQACD7o+V2Zp/CTcZawIPDBTSw/PeaAN+2uAUX/Hx4wYFWIC3AIvgWjfoAQckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIKYAByQgpgAHJCCmAAckIOYDB4Uur+wyE+YAAAAASUVORK5CYII=', 'base64');
-  const logoData = navyLogoFallback;
+  const logoData = (comercio.logo_url && await loadImage(`${origin}/api/image/${comercio.id}?f=logo&bg=0b2c65`)) || navyLogoFallback;
   zip.file('logo.png', logoData);
 
-  // Icons: fondo azul marino con texto DC (prueba de visibilidad en notificaciones iPhone)
   zip.file('icon.png',    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAB0AAAAdCAYAAABWk2cPAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAPklEQVRIie2XwQkAAAgC+7uKa7n/CLZFENyjtyCl18jp9Qyiwl6zSOFkSjiU7BUtY/o0kENhpIKgArb95K1YvkxGfyOkicQAAAAASUVORK5CYII=', 'base64'));
   zip.file('icon@2x.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAADoAAAA6CAYAAADhu0ooAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAmklEQVRoge3XsQ3AIAwEwPSs8mt5/xE+S0QyUq6gB8OfzXMy/cN6tjfgoHGj9XQjo4XRuUBK7SX6aA0M54L8yGjMujXUx+9l1qGAUWBUGAVGsw4FjAKjwigwmnUoYBQYFUaB0axDAaPAqDAKjGYdChgFRoVRYDTrUMAoMCqMAqNZhwJGgVFhFBjNOhQwCowKo8Bo1qGAUb4rwgsWqBoIDrsHNgAAAABJRU5ErkJggg==', 'base64'));
   zip.file('icon@3x.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAFcAAABXCAYAAABxyNlsAAAACXBIWXMAAAPoAAAD6AG1e1JrAAABOElEQVR4nO3YQQ0DMRTE0L2XimmFP4QpiGrlVPLhE3hy5pDnw1l3XjF4gj2vxRUu4e4fX1jlEu7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5VUuPmKzQLiza6tcfLhmgXBnI1QuPlazwD3Xxw3hzq6wcvFBmwXCnV1e5eIjNguEO7u2ysWHaxYIdzZC5eJjNQvcc33cEO7sCisXH7RZINzZ5f16X2tLeo2LA+5hAAAAAElFTkSuQmCC', 'base64'));
 
-  // Banner ajustado (sin recortes) a la proporción que exige Apple Wallet
-  // TEST: strip deshabilitado para aislar thumbnail blanco en notificación
-  const stripData = null;
+  // Strip/banner — con fondo navy explícito para que el strip no quede blanco
+  const stripData = comercio.hero_image_url
+    ? await loadImage(`${origin}/api/image/${comercio.id}?f=hero&strip=true&bg=0b2c65`)
+    : null;
   if (stripData) {
     zip.file('strip.png', stripData);
     zip.file('strip@2x.png', stripData);
