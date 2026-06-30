@@ -254,15 +254,13 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
     zip.file('strip@3x.png', stripData, { compression: 'STORE' });
   }
 
+  // SHA1 hashes vía WebCrypto nativo — más rápido que forge en imágenes grandes
   const manifest = {};
   for (const [name, file] of Object.entries(zip.files)) {
     if (file.dir) continue;
     const content = await file.async('uint8array');
-    const md = forge.md.sha1.create();
-    let binary = '';
-    for (let i = 0; i < content.length; i++) binary += String.fromCharCode(content[i]);
-    md.update(binary);
-    manifest[name] = md.digest().toHex();
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', content));
+    manifest[name] = Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   const manifestBuffer = Buffer.from(JSON.stringify(manifest));
   zip.file('manifest.json', manifestBuffer);
