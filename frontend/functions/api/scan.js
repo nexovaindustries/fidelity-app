@@ -393,22 +393,20 @@ export async function onRequest(context) {
       }]))
       .catch(() => {});
 
-    // 6 & 7. Wallet updates — run in parallel, capture errors for debugging
-    const [googleResult, appleResult] = await Promise.allSettled([
-      patchGoogleWalletObject(updatedCard, env),
-      notifyAppleWalletDevices(tarjeta.id, updatedCard, env),
-    ]);
-
-    const walletDebug = {
-      google: googleResult.status === 'fulfilled' ? 'ok' : googleResult.reason?.message,
-      apple:  appleResult.status  === 'fulfilled' ? 'ok' : appleResult.reason?.message,
-    };
+    // 6 & 7. Wallet push updates — run in background, NOT awaited.
+    // Esto evita que una API externa lenta (Google/Apple) bloquee la
+    // respuesta de la transacción y dispare timeouts/1102 en Cloudflare.
+    context.waitUntil(
+      Promise.allSettled([
+        patchGoogleWalletObject(updatedCard, env),
+        notifyAppleWalletDevices(tarjeta.id, updatedCard, env),
+      ])
+    );
 
     return new Response(JSON.stringify({
       success: true,
       message: 'Transacción procesada correctamente.',
       data: { tarjeta: updatedCard },
-      walletDebug,
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
