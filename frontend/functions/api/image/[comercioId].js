@@ -37,64 +37,27 @@ function buildChunk(type, data) {
   return out;
 }
 
-// Adler-32 con acumulación por bloques (NMAX=5552) en vez de % por byte —
-// igual que hace zlib internamente, ~3x más rápido que el módulo ingenuo.
-function adler32(data) {
-  const MOD = 65521;
-  let a = 1, b = 0;
-  let i = 0;
-  const len = data.length;
-  while (i < len) {
-    const end = i + Math.min(5552, len - i);
-    for (; i < end; i++) { a += data[i]; b += a; }
-    a %= MOD; b %= MOD;
-  }
-  return ((b << 16) | a) >>> 0;
-}
-
-// Empaqueta los datos crudos en un stream zlib válido usando bloques "stored"
-// (sin comprimir) en vez de CompressionStream('deflate'). CompressionStream no
-// permite elegir nivel de compresión, y comprimir imágenes reales (con ruido/
-// detalle) puede tardar 25-30ms en CPU — eso es lo que disparaba el error 1102
-// de Cloudflare. Sin comprimir, la codificación es ~O(n) trivial (<5ms) a
-// costa de un PNG más pesado en bytes, lo cual es aceptable para este uso.
-function zlibStoreNoCompression(data) {
-  const BLOCK = 65535;
-  const numBlocks = Math.max(1, Math.ceil(data.length / BLOCK));
-  let bodySize = 0;
-  for (let i = 0; i < numBlocks; i++) bodySize += 5 + (Math.min(BLOCK, data.length - i * BLOCK) || 0);
-  const out = new Uint8Array(2 + bodySize + 4);
-  out[0] = 0x78; out[1] = 0x01; // zlib header (CMF/FLG)
-  let pos = 2;
-  for (let i = 0; i < numBlocks; i++) {
-    const start = i * BLOCK;
-    const len = Math.min(BLOCK, data.length - start);
-    out[pos++] = (i === numBlocks - 1) ? 1 : 0; // BFINAL + BTYPE=00 (stored), byte-aligned
-    const nlen = (~len) & 0xFFFF;
-    out[pos++] = len & 0xFF; out[pos++] = (len >> 8) & 0xFF;
-    out[pos++] = nlen & 0xFF; out[pos++] = (nlen >> 8) & 0xFF;
-    out.set(data.subarray(start, start + len), pos);
-    pos += len;
-  }
-  const a32 = adler32(data);
-  out[pos++] = (a32 >>> 24) & 0xFF; out[pos++] = (a32 >>> 16) & 0xFF;
-  out[pos++] = (a32 >>> 8) & 0xFF; out[pos++] = a32 & 0xFF;
-  return out;
-}
-
 // ─── Codifica píxeles RGBA crudos como PNG ─────────────────────────────────────
 async function rgbaToPng(rgba, width, height) {
   const rowSize = 1 + width * 4;
   const rawData = new Uint8Array(height * rowSize);
-  const rowBytes = width * 4;
   for (let y = 0; y < height; y++) {
-    // Una sola copia por fila (filtro None = byte 0 inicial, ya cero por defecto)
-    // en vez de un subarray+set por píxel — eso solo ya costaba ~20ms en
-    // imágenes de banner/logo reales.
-    rawData.set(rgba.subarray(y * rowBytes, y * rowBytes + rowBytes), y * rowSize + 1);
+    rawData[y * rowSize] = 0; // filtro None
+    for (let x = 0; x < width; x++) {
+      const s = (y * width + x) * 4, d = y * rowSize + 1 + x * 4;
+      rawData.set(rgba.subarray(s, s + 4), d);
+    }
   }
 
-  const compData = zlibStoreNoCompression(rawData);
+  const cs = new CompressionStream('deflate');
+  { const w = cs.writable.getWriter(); w.write(rawData); w.close(); }
+  const parts = [];
+  const rdr = cs.readable.getReader();
+  while (true) { const { done, value } = await rdr.read(); if (done) break; parts.push(value); }
+  const compSize = parts.reduce((s, c) => s + c.length, 0);
+  const compData = new Uint8Array(compSize);
+  let pos = 0;
+  for (const p of parts) { compData.set(p, pos); pos += p.length; }
 
   const ihdrData = new Uint8Array(13);
   const ihdrDv = new DataView(ihdrData.buffer);
@@ -194,54 +157,33 @@ async function decodePngToRgba(inputBuffer) {
   const currRow = new Uint8Array(stride);
   let rawPos = 0;
 
-  // Por cada filtro PNG se especializa el loop interno (evita el switch por
-  // byte) y, cuando la imagen ya es RGBA (bpp===4), se copia la fila entera
-  // con un solo .set() en vez de un loop por píxel — esto solo reducía a la
-  // mitad el tiempo de defiltrado en imágenes reales de banner/logo.
   for (let y = 0; y < height; y++) {
     const ft = raw[rawPos++];
-    switch (ft) {
-      case 0:
-        for (let x = 0; x < stride; x++) currRow[x] = raw[rawPos + x];
-        break;
-      case 1:
-        for (let x = 0; x < stride; x++) {
-          const a = x >= bpp ? currRow[x - bpp] : 0;
-          currRow[x] = (raw[rawPos + x] + a) & 0xFF;
-        }
-        break;
-      case 2:
-        for (let x = 0; x < stride; x++) currRow[x] = (raw[rawPos + x] + prevRow[x]) & 0xFF;
-        break;
-      case 3:
-        for (let x = 0; x < stride; x++) {
-          const a = x >= bpp ? currRow[x - bpp] : 0;
-          currRow[x] = (raw[rawPos + x] + Math.floor((a + prevRow[x]) / 2)) & 0xFF;
-        }
-        break;
-      case 4:
-        for (let x = 0; x < stride; x++) {
-          const a = x >= bpp ? currRow[x - bpp] : 0;
-          const b = prevRow[x];
-          const c = x >= bpp ? prevRow[x - bpp] : 0;
+    for (let x = 0; x < stride; x++) {
+      const rb = raw[rawPos + x];
+      const a = x >= bpp ? currRow[x - bpp] : 0;
+      const b = prevRow[x];
+      const c = x >= bpp ? prevRow[x - bpp] : 0;
+      let val;
+      switch (ft) {
+        case 0: val = rb; break;
+        case 1: val = rb + a; break;
+        case 2: val = rb + b; break;
+        case 3: val = rb + Math.floor((a + b) / 2); break;
+        case 4: {
           const p = a + b - c, pa = Math.abs(p-a), pb = Math.abs(p-b), pc = Math.abs(p-c);
-          currRow[x] = (raw[rawPos + x] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 0xFF;
+          val = rb + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c); break;
         }
-        break;
-      default:
-        for (let x = 0; x < stride; x++) currRow[x] = raw[rawPos + x];
+        default: val = rb;
+      }
+      currRow[x] = val & 0xFF;
     }
     rawPos += stride;
     prevRow.set(currRow);
-
-    if (bpp === 4) {
-      rgba.set(currRow, y * width * 4);
-    } else {
-      for (let x = 0; x < width; x++) {
-        const s = x * bpp, d = (y * width + x) * 4;
-        rgba[d] = currRow[s]; rgba[d+1] = currRow[s+1]; rgba[d+2] = currRow[s+2];
-        rgba[d+3] = 255;
-      }
+    for (let x = 0; x < width; x++) {
+      const s = x * bpp, d = (y * width + x) * 4;
+      rgba[d] = currRow[s]; rgba[d+1] = currRow[s+1]; rgba[d+2] = currRow[s+2];
+      rgba[d+3] = bpp === 4 ? currRow[s+3] : 255;
     }
   }
 
@@ -399,16 +341,7 @@ export async function onRequest(context) {
       const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
       if (!match) return new Response('Datos de imagen inválidos', { status: 400, headers });
       contentType = match[1];
-      // atob()+Uint8Array.from(str, cb) invoca un callback por caracter —
-      // con strings base64 de cientos de miles de caracteres esto solo ya
-      // costaba 10-15ms de CPU (y mas en el runtime de Workers), suficiente
-      // para llevar el total por encima del limite de 50ms. Un loop manual
-      // sobre el string binario de atob() es ~15x mas rapido.
-      const bin = atob(match[2]);
-      const binLen = bin.length;
-      const bytes = new Uint8Array(binLen);
-      for (let i = 0; i < binLen; i++) bytes[i] = bin.charCodeAt(i);
-      binary = bytes.buffer;
+      binary = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)).buffer;
     } else {
       return new Response('Formato no soportado', { status: 400, headers });
     }
@@ -422,8 +355,7 @@ export async function onRequest(context) {
     // una versión procesada (?circle= o ?strip=) y la imagen es demasiado
     // grande, se responde "no disponible" — el caller (loadImage en apple.js)
     // ya maneja esto con gracia omitiendo el logo/banner en vez de fallar.
-    const willProcess = applyCircle || fitStrip || iconSize > 0 || !!bgHex;
-    const dims = willProcess ? peekImageDimensions(binary, contentType) : null;
+    const dims = (applyCircle || fitStrip) ? peekImageDimensions(binary, contentType) : null;
     const tooLargeToProcess = dims && (dims.width * dims.height) > MAX_SAFE_PIXELS;
 
     if (tooLargeToProcess) {
