@@ -156,37 +156,25 @@ export async function onRequest(context) {
 
   // Debug / status page (no tarjetaId)
   if (request.method === 'GET' && !url.searchParams.has('tarjetaId')) {
-    // Test WebCrypto signing so we can diagnose key format issues
-    let cryptoTest = 'No probado';
-    let cryptoDetail = '';
-    try {
-      if (env.APPLE_KEY && env.APPLE_CER) {
-        await _importSignKey(env.APPLE_KEY);
-        const testManifest = Buffer.from('{"test":"ok"}');
-        const testSig = await createPkcs7Signature(testManifest, env.APPLE_CER, env.APPLE_KEY, env.APPLE_WWDR);
-        cryptoTest = `✅ OK — firma generada (${testSig.length} bytes)`;
-        const certInfo = extractPassTypeInfo(env.APPLE_CER);
-        cryptoDetail = `passTypeId=${certInfo.passTypeId || '(del env)'}, teamId=${certInfo.teamId || '(del env)'}`;
-      } else {
-        cryptoTest = '⚠️ APPLE_KEY o APPLE_CER no configurado';
-      }
-    } catch(e) {
-      cryptoTest = `❌ ERROR: ${e.message}`;
-      cryptoDetail = e.stack || '';
-    }
+    const status = {
+      APPLE_WWDR: !!env.APPLE_WWDR,
+      APPLE_CER: !!env.APPLE_CER,
+      APPLE_KEY: !!env.APPLE_KEY,
+      APPLE_PASS_TYPE_ID: env.APPLE_PASS_TYPE_ID || 'Usando default',
+      APPLE_TEAM_ID: env.APPLE_TEAM_ID || 'Usando default',
+      SUPABASE_URL: !!env.SUPABASE_URL,
+    };
     return new Response(`
       <html>
         <head><title>Apple Wallet Status</title></head>
         <body style="font-family: sans-serif; padding: 20px;">
           <h1>Estado del Servicio Apple Wallet</h1>
           <ul>
-            <li>WWDR Cert: ${env.APPLE_WWDR ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
-            <li>Signer Cert (CER): ${env.APPLE_CER ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
-            <li>Private Key (KEY): ${env.APPLE_KEY ? '✅ CARGADO' : '❌ NO ENCONTRADO'} — Header: ${env.APPLE_KEY ? env.APPLE_KEY.split('\n')[0].trim() || env.APPLE_KEY.slice(0,40) : 'N/A'}</li>
-            <li>Pass Type ID: ${env.APPLE_PASS_TYPE_ID || 'Usando default'}</li>
-            <li>Supabase URL: ${env.APPLE_SUPABASE_URL || env.SUPABASE_URL ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
-            <li>WebCrypto firma: ${cryptoTest}</li>
-            ${cryptoDetail ? `<li style="color:#666;font-size:12px;word-break:break-all">${cryptoDetail.replace(/\n/g,'<br>')}</li>` : ''}
+            <li>WWDR Cert: ${status.APPLE_WWDR ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
+            <li>Signer Cert (CER): ${status.APPLE_CER ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
+            <li>Private Key (KEY): ${status.APPLE_KEY ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
+            <li>Pass Type ID: ${status.APPLE_PASS_TYPE_ID}</li>
+            <li>Supabase URL: ${status.SUPABASE_URL ? '✅ CARGADO' : '❌ NO ENCONTRADO'}</li>
           </ul>
         </body>
       </html>
