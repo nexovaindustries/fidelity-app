@@ -251,12 +251,21 @@ export default function Settings() {
 
       if (error) throw error;
 
-      // Avisar a los pases de Apple Wallet ya instalados que hay datos nuevos
-      // (logo, icono, color, etc.) para que Apple los vuelva a pedir.
-      await supabase
-        .from('tarjetas_activas')
-        .update({ apple_pass_updated_at: new Date().toISOString() })
-        .eq('comercio_id', comercioId);
+      // Avisar (push APNs) a los pases de Apple Wallet ya instalados que hay
+      // datos nuevos (logo, icono, color, etc.) para que Apple los refresque.
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch('/api/wallet/notify-update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ comercio_id: comercioId }),
+        });
+      } catch (notifyErr) {
+        console.error('No se pudo notificar a Apple Wallet:', notifyErr);
+      }
 
       setMessage({ text: '✓ Configuración guardada exitosamente.', type: 'success' });
     } catch (err) {
