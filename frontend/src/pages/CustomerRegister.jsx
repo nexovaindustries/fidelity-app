@@ -283,7 +283,9 @@ export default function CustomerRegister() {
   // ──── APPLE WALLET URL (computed, no JS navigation) ────
   const getAppleWalletUrl = () => {
     if (!tarjetaId) return null;
-    return `/api/wallet/apple?tarjetaId=${encodeURIComponent(tarjetaId)}`;
+    // Parametro "v" para evitar que Safari/Files reutilice un .pkpass
+    // descargado previamente con el mismo nombre/URL (icono/logo viejo).
+    return `/api/wallet/apple?tarjetaId=${encodeURIComponent(tarjetaId)}&v=${Date.now()}`;
   };
 
   // ──── LOADING STATE ────
