@@ -380,6 +380,7 @@ export async function onRequest(context) {
         'Content-Type': 'application/vnd.apple.pkpass',
         'Content-Disposition': `attachment; filename="${comercio.nombre.replace(/[^a-z0-9]/gi, '_')}.pkpass"`,
         'Content-Length': String(passBuffer.byteLength),
+        'Cache-Control': 'no-store',
       },
     });
 

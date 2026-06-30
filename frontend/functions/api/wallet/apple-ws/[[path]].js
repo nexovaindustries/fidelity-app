@@ -432,6 +432,7 @@ async function handleGetPass(request, supabase, env, url, serialNumber) {
       'Content-Type': 'application/vnd.apple.pkpass',
       'Last-Modified': new Date().toUTCString(),
       'Content-Disposition': `attachment; filename="${(comercioNombre || 'pass').replace(/[^a-z0-9]/gi, '_')}.pkpass"`,
+      'Cache-Control': 'no-store',
     },
   });
 }
