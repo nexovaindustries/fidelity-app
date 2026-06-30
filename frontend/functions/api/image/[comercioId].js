@@ -372,6 +372,9 @@ export async function onRequest(context) {
     'Cache-Control': 'public, max-age=3600',
   };
 
+  const __t0 = Date.now();
+  const __log = (label) => console.log(`[IMG-PERF] ${label}: ${Date.now() - __t0}ms`);
+
   try {
     if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
       return new Response('Supabase no configurado', { status: 500, headers });
@@ -383,6 +386,7 @@ export async function onRequest(context) {
       .select('logo_url, hero_image_url, icon_url')
       .eq('id', comercioId)
       .single();
+    __log('after supabase fetch');
 
     const imageData = data?.[field];
     if (!imageData) return new Response('No encontrado', { status: 404, headers });
@@ -399,16 +403,19 @@ export async function onRequest(context) {
       const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
       if (!match) return new Response('Datos de imagen inválidos', { status: 400, headers });
       contentType = match[1];
+      __log('after regex match');
       // atob()+Uint8Array.from(str, cb) invoca un callback por caracter —
       // con strings base64 de cientos de miles de caracteres esto solo ya
       // costaba 10-15ms de CPU (y mas en el runtime de Workers), suficiente
       // para llevar el total por encima del limite de 50ms. Un loop manual
       // sobre el string binario de atob() es ~15x mas rapido.
       const bin = atob(match[2]);
+      __log('after atob');
       const binLen = bin.length;
       const bytes = new Uint8Array(binLen);
       for (let i = 0; i < binLen; i++) bytes[i] = bin.charCodeAt(i);
       binary = bytes.buffer;
+      __log('after charCodeAt loop');
     } else {
       return new Response('Formato no soportado', { status: 400, headers });
     }
@@ -474,17 +481,22 @@ export async function onRequest(context) {
           contentType = 'image/png';
         }
       } else if (bgHex) {
+        __log('before decodeToRgba');
         const decoded = await decodeToRgba(binary, contentType);
+        __log('after decodeToRgba');
         if (decoded) {
           const r = parseInt(bgHex.slice(0, 2), 16);
           const g = parseInt(bgHex.slice(2, 4), 16);
           const b = parseInt(bgHex.slice(4, 6), 16);
           compositeOntoBackground(decoded.rgba, decoded.width, decoded.height, r, g, b);
+          __log('after compositeOntoBackground');
           binary = await rgbaToPng(decoded.rgba, decoded.width, decoded.height);
+          __log('after rgbaToPng');
           contentType = 'image/png';
         }
       }
-    } catch (_) {
+    } catch (e) {
+      __log('CAUGHT EXCEPTION: ' + (e && e.message));
       // Si el procesamiento falla por cualquier motivo, servir la imagen
       // original sin modificar en vez de fallar la respuesta completa.
       // (Solo llega aquí si la imagen ya pasó el check de tamaño arriba,
