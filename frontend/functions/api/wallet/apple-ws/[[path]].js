@@ -10,7 +10,6 @@
  */
 
 import JSZip from 'jszip';
-import forge from 'node-forge';
 import { Buffer } from 'node:buffer';
 import { createClient } from '@supabase/supabase-js';
 
@@ -59,39 +58,92 @@ function getProgressInfo(tarjeta, tipo, config) {
   };
 }
 
-const _forgeCache = {};
+// ─── WebCrypto PKCS#7 signer — replaces node-forge (native C++, no error 1102) ─
 
-function getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem) {
-  const cacheKey = signerCertPem.slice(0, 40);
-  if (!_forgeCache[cacheKey]) {
-    _forgeCache[cacheKey] = {
-      signerCert: forge.pki.certificateFromPem(fixPem(signerCertPem)),
-      privateKey: forge.pki.decryptRsaPrivateKey(fixPem(signerKeyPem)) ||
-                  forge.pki.privateKeyFromPem(fixPem(signerKeyPem)),
-      wwdrCert: wwdrCertPem ? forge.pki.certificateFromPem(fixPem(wwdrCertPem)) : null,
-    };
+function _cc(...arrays) {
+  const n = arrays.reduce((s, a) => s + a.length, 0);
+  const r = new Uint8Array(n); let o = 0;
+  for (const a of arrays) { r.set(a, o); o += a.length; }
+  return r;
+}
+function _tlv(tag, val) {
+  const n = val.length;
+  const lb = n < 0x80 ? [n] : (() => { const b = []; let x = n; while (x) { b.unshift(x & 0xff); x >>= 8; } return [0x80 | b.length, ...b]; })();
+  return _cc(new Uint8Array([tag, ...lb]), val);
+}
+function _oid(str) {
+  const p = str.split('.').map(Number);
+  const enc = [40 * p[0] + p[1]];
+  for (let i = 2; i < p.length; i++) { let v = p[i], b = [v & 0x7f]; v >>= 7; while (v) { b.unshift((v & 0x7f) | 0x80); v >>= 7; } enc.push(...b); }
+  return _tlv(0x06, new Uint8Array(enc));
+}
+function _pem2der(pem) {
+  return Uint8Array.from(atob(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
+}
+function _readTlv(b, p) {
+  const tag = b[p++]; let l = b[p++];
+  if (l & 0x80) { const nb = l & 0x7f; l = 0; for (let i = 0; i < nb; i++) l = l * 256 + b[p++]; }
+  return { tag, vs: p, ve: p + l };
+}
+function _certIssuerSerial(der) {
+  let r = _readTlv(der, 0); let t = _readTlv(der, r.vs); let p = t.vs;
+  if (der[p] === 0xa0) p = _readTlv(der, p).ve;
+  const sEl = _readTlv(der, p); const serialBytes = der.slice(sEl.vs, sEl.ve); p = sEl.ve;
+  p = _readTlv(der, p).ve;
+  const iss = _readTlv(der, p); const issuerBytes = der.slice(p, iss.ve);
+  return { serialBytes, issuerBytes };
+}
+function _certAttr(der, oidBytes) {
+  for (let i = 0; i < der.length - oidBytes.length; i++) {
+    let m = true; for (let j = 0; j < oidBytes.length; j++) if (der[i+j] !== oidBytes[j]) { m = false; break; }
+    if (m) { const v = _readTlv(der, i + oidBytes.length); return new TextDecoder().decode(der.slice(v.vs, v.ve)); }
   }
-  return _forgeCache[cacheKey];
+  return null;
 }
-
-function createPkcs7Signature(manifestBuffer, signerCertPem, signerKeyPem, wwdrCertPem) {
-  const { signerCert, privateKey, wwdrCert } = getParsedCerts(signerCertPem, signerKeyPem, wwdrCertPem);
-  const p7 = forge.pkcs7.createSignedData();
-  p7.content = new forge.util.ByteStringBuffer(manifestBuffer);
-  if (wwdrCert) p7.addCertificate(wwdrCert);
-  p7.addCertificate(signerCert);
-  p7.addSigner({
-    key: privateKey, certificate: signerCert,
-    digestAlgorithm: forge.pki.oids.sha1,
-    authenticatedAttributes: [
-      { type: forge.pki.oids.contentType, value: forge.pki.oids.data },
-      { type: forge.pki.oids.messageDigest },
-      { type: forge.pki.oids.signingTime },
-    ],
-  });
-  p7.sign({ detached: true });
-  return Buffer.from(forge.asn1.toDer(p7.toAsn1()).getBytes(), 'binary');
+function _pkcs1ToPkcs8(d) {
+  return _tlv(0x30, _cc(new Uint8Array([0x02,0x01,0x00]), _tlv(0x30, _cc(_oid('1.2.840.113549.1.1.1'), new Uint8Array([0x05,0x00]))), _tlv(0x04, d)));
 }
+const _p7Cache = {};
+async function _importSignKey(keyPem) {
+  const k = keyPem.slice(0, 50);
+  if (_p7Cache[k]) return _p7Cache[k];
+  let der = _pem2der(fixPem(keyPem));
+  if (keyPem.includes('RSA PRIVATE KEY')) der = _pkcs1ToPkcs8(der);
+  _p7Cache[k] = await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, false, ['sign']);
+  return _p7Cache[k];
+}
+async function createPkcs7Signature(manifestBuffer, signerCertPem, signerKeyPem, wwdrCertPem) {
+  const mBytes = manifestBuffer instanceof Uint8Array ? manifestBuffer : new Uint8Array(manifestBuffer.buffer, manifestBuffer.byteOffset, manifestBuffer.byteLength);
+  const signerDer = _pem2der(fixPem(signerCertPem));
+  const wwdrDer   = wwdrCertPem ? _pem2der(fixPem(wwdrCertPem)) : null;
+  const digest    = new Uint8Array(await crypto.subtle.digest('SHA-1', mBytes));
+  const sha1Alg   = _tlv(0x30, _cc(_oid('1.3.14.3.2.26'), new Uint8Array([0x05,0x00])));
+  const rsaAlg    = _tlv(0x30, _cc(_oid('1.2.840.113549.1.1.1'), new Uint8Array([0x05,0x00])));
+  const ctAttr    = _tlv(0x30, _cc(_oid('1.2.840.113549.1.9.3'), _tlv(0x31, _oid('1.2.840.113549.1.7.1'))));
+  const mdAttr    = _tlv(0x30, _cc(_oid('1.2.840.113549.1.9.4'), _tlv(0x31, _tlv(0x04, digest))));
+  const attrs     = _cc(ctAttr, mdAttr);
+  const rawSig    = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await _importSignKey(signerKeyPem), _tlv(0x31, attrs)));
+  const { serialBytes, issuerBytes } = _certIssuerSerial(signerDer);
+  const signerInfo = _tlv(0x30, _cc(
+    new Uint8Array([0x02,0x01,0x01]), _tlv(0x30, _cc(issuerBytes, _tlv(0x02, serialBytes))),
+    sha1Alg, _tlv(0xa0, attrs), rsaAlg, _tlv(0x04, rawSig)
+  ));
+  const allCerts  = wwdrDer ? _cc(signerDer, wwdrDer) : signerDer;
+  const signedData = _tlv(0x30, _cc(
+    new Uint8Array([0x02,0x01,0x01]), _tlv(0x31, sha1Alg),
+    _tlv(0x30, _oid('1.2.840.113549.1.7.1')), _tlv(0xa0, allCerts), _tlv(0x31, signerInfo)
+  ));
+  return Buffer.from(_tlv(0x30, _cc(_oid('1.2.840.113549.1.7.2'), _tlv(0xa0, signedData))));
+}
+const _oidUID = _oid('0.9.2342.19200300.100.1.1');
+const _oidOU  = _oid('2.5.4.11');
+function extractPassTypeInfo(certPem) {
+  try {
+    const der = _pem2der(fixPem(certPem));
+    return { passTypeId: _certAttr(der, _oidUID), teamId: _certAttr(der, _oidOU) };
+  } catch (_) { return { passTypeId: null, teamId: null }; }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function buildPassFile(tarjeta, env, webServiceURL) {
   const { APPLE_WWDR, APPLE_CER, APPLE_KEY, APPLE_PASS_TYPE_ID, APPLE_TEAM_ID } = env;
@@ -103,14 +155,9 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
 
   let passTypeId = (APPLE_PASS_TYPE_ID || 'pass.com.nexova.fidelity').trim();
   let teamId = (APPLE_TEAM_ID || 'D734HNJ3VC').trim();
-  try {
-    // Reutilizar el cert ya parseado del caché de forge
-    const { signerCert } = getParsedCerts(APPLE_CER, APPLE_KEY, APPLE_WWDR);
-    const uidAttr = signerCert.subject.attributes.find(a => a.shortName === 'UID' || a.name === 'UID');
-    const ouAttr = signerCert.subject.attributes.find(a => a.shortName === 'OU' || a.name === 'OU');
-    if (uidAttr?.value) passTypeId = String(uidAttr.value).trim();
-    if (ouAttr?.value) teamId = String(ouAttr.value).trim();
-  } catch (_) {}
+  const certInfo = extractPassTypeInfo(APPLE_CER);
+  if (certInfo.passTypeId) passTypeId = certInfo.passTypeId;
+  if (certInfo.teamId) teamId = certInfo.teamId;
 
   // Stamp dots — spaced individually (⬤/○)
   let stampDots = null;
@@ -258,15 +305,12 @@ async function buildPassFile(tarjeta, env, webServiceURL) {
   for (const [name, file] of Object.entries(zip.files)) {
     if (file.dir) continue;
     const content = await file.async('uint8array');
-    const md = forge.md.sha1.create();
-    let binary = '';
-    for (let i = 0; i < content.length; i++) binary += String.fromCharCode(content[i]);
-    md.update(binary);
-    manifest[name] = md.digest().toHex();
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', content));
+    manifest[name] = hash.reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
   }
   const manifestBuffer = Buffer.from(JSON.stringify(manifest));
   zip.file('manifest.json', manifestBuffer);
-  zip.file('signature', createPkcs7Signature(manifestBuffer, APPLE_CER, APPLE_KEY, APPLE_WWDR));
+  zip.file('signature', await createPkcs7Signature(manifestBuffer, APPLE_CER, APPLE_KEY, APPLE_WWDR));
 
   return {
     passBuffer: await zip.generateAsync({ type: 'uint8array' }),
