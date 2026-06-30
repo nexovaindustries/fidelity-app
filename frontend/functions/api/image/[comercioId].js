@@ -399,7 +399,16 @@ export async function onRequest(context) {
       const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
       if (!match) return new Response('Datos de imagen inválidos', { status: 400, headers });
       contentType = match[1];
-      binary = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)).buffer;
+      // atob()+Uint8Array.from(str, cb) invoca un callback por caracter —
+      // con strings base64 de cientos de miles de caracteres esto solo ya
+      // costaba 10-15ms de CPU (y mas en el runtime de Workers), suficiente
+      // para llevar el total por encima del limite de 50ms. Un loop manual
+      // sobre el string binario de atob() es ~15x mas rapido.
+      const bin = atob(match[2]);
+      const binLen = bin.length;
+      const bytes = new Uint8Array(binLen);
+      for (let i = 0; i < binLen; i++) bytes[i] = bin.charCodeAt(i);
+      binary = bytes.buffer;
     } else {
       return new Response('Formato no soportado', { status: 400, headers });
     }
