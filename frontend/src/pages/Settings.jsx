@@ -250,7 +250,14 @@ export default function Settings() {
         .eq('id', comercioId);
 
       if (error) throw error;
-      
+
+      // Avisar a los pases de Apple Wallet ya instalados que hay datos nuevos
+      // (logo, icono, color, etc.) para que Apple los vuelva a pedir.
+      await supabase
+        .from('tarjetas_activas')
+        .update({ apple_pass_updated_at: new Date().toISOString() })
+        .eq('comercio_id', comercioId);
+
       setMessage({ text: '✓ Configuración guardada exitosamente.', type: 'success' });
     } catch (err) {
       console.error(err);
